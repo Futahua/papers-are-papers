@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod gateway_proxy;
 mod models;
 mod paths;
 mod policy;
@@ -7,6 +8,7 @@ mod runtime;
 mod self_edit;
 mod storage;
 
+use gateway_proxy::GatewayProxy;
 use models::{BootstrapStatus, ChangeRecord, InspectSelection, PapersSession, PolicyDecision};
 use paths::PapersPaths;
 use runtime::RuntimeManager;
@@ -14,13 +16,14 @@ use self_edit::SelfEditService;
 use serde_json::Value;
 use std::sync::Mutex;
 use storage::Database;
-use tauri::{Manager, RunEvent, State};
+use tauri::{AppHandle, Manager, RunEvent, State};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
 struct AppState {
     database: Database,
     runtime: RuntimeManager,
     self_edit: SelfEditService,
+    gateway: GatewayProxy,
     last_foreground: Mutex<String>,
 }
 
@@ -47,6 +50,22 @@ fn stop_hermes(state: State<'_, AppState>) -> Result<(), String> {
 #[tauri::command]
 async fn start_nous_login(state: State<'_, AppState>) -> Result<String, String> {
     state.runtime.start_nous_login().await
+}
+
+#[tauri::command]
+async fn gateway_connect(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    let url = state.runtime.gateway_url()?;
+    state.gateway.connect(app, url).await
+}
+
+#[tauri::command]
+fn gateway_send(state: State<'_, AppState>, frame: String) -> Result<(), String> {
+    state.gateway.send(frame)
+}
+
+#[tauri::command]
+fn gateway_disconnect(state: State<'_, AppState>) -> Result<(), String> {
+    state.gateway.disconnect()
 }
 
 #[tauri::command]
@@ -200,6 +219,7 @@ fn main() {
         database,
         runtime,
         self_edit,
+        gateway: GatewayProxy::default(),
         last_foreground: Mutex::new(String::new()),
     };
 
@@ -251,6 +271,9 @@ fn main() {
             start_hermes,
             stop_hermes,
             start_nous_login,
+            gateway_connect,
+            gateway_send,
+            gateway_disconnect,
             show_companion,
             hide_companion,
             show_main,
@@ -274,6 +297,7 @@ fn main() {
 
     app.run(|app_handle, event| {
         if matches!(event, RunEvent::Exit) {
+            let _ = app_handle.state::<AppState>().gateway.disconnect();
             let _ = app_handle.state::<AppState>().runtime.stop();
         }
     });

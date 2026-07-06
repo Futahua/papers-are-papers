@@ -18,6 +18,7 @@ const CREATE_NO_WINDOW: u32 = 0x08000000;
 struct RuntimeProcess {
     child: Option<Child>,
     port: Option<u16>,
+    session_token: Option<String>,
 }
 
 #[derive(Clone)]
@@ -38,6 +39,7 @@ impl RuntimeManager {
             process: Arc::new(Mutex::new(RuntimeProcess {
                 child: None,
                 port: None,
+                session_token: None,
             })),
             client: reqwest::Client::builder()
                 .timeout(Duration::from_secs(20))
@@ -70,6 +72,7 @@ impl RuntimeManager {
             if !running {
                 process.child = None;
                 process.port = None;
+                process.session_token = None;
             }
             (running, process.port)
         };
@@ -115,9 +118,12 @@ impl RuntimeManager {
     pub async fn install(&self) -> Result<BootstrapStatus, String> {
         if self.paths.hermes_executable().is_file() {
             self.write_guarded_config()?;
+            self.install_computer_use().await?;
             return Ok(self.status().await);
         }
 
+        self.preserve_partial_install()?;
+        let git_config = self.write_installer_git_config()?;
         std::fs::create_dir_all(&self.paths.runtime).map_err(|error| error.to_string())?;
         let installer_path = self.paths.runtime.join("hermes-install.ps1");
         let bytes = self
@@ -170,6 +176,8 @@ impl RuntimeManager {
                 .arg(&paths.hermes_install)
                 .args(["-SkipSetup", "-NonInteractive"])
                 .env("HERMES_HOME", &paths.hermes_home)
+                .env("GIT_CONFIG_GLOBAL", &git_config)
+                .env("PLAYWRIGHT_BROWSERS_PATH", paths.runtime.join("playwright"))
                 .stdout(Stdio::from(log))
                 .stderr(Stdio::from(stderr));
             hide_console(&mut command);
@@ -201,14 +209,47 @@ impl RuntimeManager {
         }
 
         self.write_guarded_config()?;
-        self.install_computer_use().await;
+        self.install_computer_use().await?;
         Ok(self.status().await)
+    }
+
+    fn preserve_partial_install(&self) -> Result<(), String> {
+        if !self.paths.hermes_install.exists() || self.paths.hermes_executable().is_file() {
+            return Ok(());
+        }
+
+        let backup = self.paths.staging.join(format!(
+            "hermes-agent-partial-{}",
+            chrono::Utc::now().timestamp_millis()
+        ));
+        std::fs::rename(&self.paths.hermes_install, &backup).map_err(|error| {
+            format!(
+                "Could not preserve the incomplete Hermes install at {}: {error}",
+                backup.display()
+            )
+        })
+    }
+
+    fn write_installer_git_config(&self) -> Result<std::path::PathBuf, String> {
+        let path = self.paths.data.join("installer.gitconfig");
+        std::fs::write(
+            &path,
+            "[core]\n\tautocrlf = false\n[windows]\n\tappendAtomically = false\n",
+        )
+        .map_err(|error| {
+            format!(
+                "Could not prepare Papers' isolated Git settings at {}: {error}",
+                path.display()
+            )
+        })?;
+        Ok(path)
     }
 
     pub async fn start(&self) -> Result<BootstrapStatus, String> {
         if !self.paths.hermes_executable().is_file() {
             return Err("Hermes is not installed yet.".to_string());
         }
+        self.install_computer_use().await?;
 
         let already_running = {
             let mut process = self.process.lock().map_err(|_| "Process lock failed")?;
@@ -222,6 +263,7 @@ impl RuntimeManager {
                 } else {
                     process.child = None;
                     process.port = None;
+                    process.session_token = None;
                     false
                 }
             } else {
@@ -234,6 +276,7 @@ impl RuntimeManager {
 
         self.write_guarded_config()?;
         let port = available_port()?;
+        let session_token = format!("{}{}", uuid::Uuid::new_v4(), uuid::Uuid::new_v4());
         let log_path = self.paths.logs.join("hermes-serve.log");
         let stdout = create_log(&log_path)?;
         let stderr = stdout
@@ -246,6 +289,12 @@ impl RuntimeManager {
             .current_dir(&self.paths.canonical_repo)
             .env("HERMES_HOME", &self.paths.hermes_home)
             .env("HERMES_EXEC_ASK", "1")
+            .env("HERMES_DASHBOARD_SESSION_TOKEN", &session_token)
+            .env(
+                "PLAYWRIGHT_BROWSERS_PATH",
+                self.paths.runtime.join("playwright"),
+            )
+            .env("HERMES_CUA_DRIVER_CMD", self.computer_use_executable())
             .stdout(Stdio::from(stdout))
             .stderr(Stdio::from(stderr));
         hide_console(&mut command);
@@ -256,6 +305,7 @@ impl RuntimeManager {
             let mut process = self.process.lock().map_err(|_| "Process lock failed")?;
             process.child = Some(child);
             process.port = Some(port);
+            process.session_token = Some(session_token);
         }
 
         for _ in 0..120 {
@@ -293,23 +343,19 @@ impl RuntimeManager {
         }
         process.child = None;
         process.port = None;
+        process.session_token = None;
         Ok(())
     }
 
     pub async fn start_nous_login(&self) -> Result<String, String> {
-        let status = self.start().await?;
-        let port = status
-            .ws_url
-            .as_ref()
-            .and_then(|url| url.split(':').nth(2))
-            .and_then(|part| part.split('/').next())
-            .and_then(|part| part.parse::<u16>().ok())
-            .ok_or_else(|| "Hermes did not report its local port".to_string())?;
+        self.start().await?;
+        let (port, session_token) = self.gateway_credentials()?;
         let response: Value = self
             .client
             .post(format!(
                 "http://127.0.0.1:{port}/api/providers/oauth/nous/start"
             ))
+            .bearer_auth(&session_token)
             .json(&serde_json::json!({}))
             .send()
             .await
@@ -352,6 +398,7 @@ impl RuntimeManager {
                 .get(format!(
                     "http://127.0.0.1:{port}/api/providers/oauth/nous/poll/{session_id}"
                 ))
+                .bearer_auth(&session_token)
                 .send()
                 .await;
             let Ok(response) = poll else { continue };
@@ -384,26 +431,125 @@ impl RuntimeManager {
         })
     }
 
-    async fn install_computer_use(&self) {
-        let executable = self.paths.hermes_executable();
-        let home = self.paths.hermes_home.clone();
+    pub fn gateway_url(&self) -> Result<String, String> {
+        let (port, token) = self.gateway_credentials()?;
+        Ok(format!("ws://127.0.0.1:{port}/api/ws?token={token}"))
+    }
+
+    fn gateway_credentials(&self) -> Result<(u16, String), String> {
+        let process = self.process.lock().map_err(|_| "Process lock failed")?;
+        let port = process
+            .port
+            .ok_or_else(|| "Hermes did not report its local port".to_string())?;
+        let token = process
+            .session_token
+            .clone()
+            .ok_or_else(|| "Hermes did not report its local session credential".to_string())?;
+        Ok((port, token))
+    }
+
+    async fn install_computer_use(&self) -> Result<(), String> {
+        let executable = self.computer_use_executable();
+        if executable.is_file() {
+            return Ok(());
+        }
+
+        let install_root = self
+            .paths
+            .runtime
+            .join("computer-use")
+            .join(&self.lock.computer_use.version);
+        if install_root.exists() {
+            let backup = self.paths.staging.join(format!(
+                "computer-use-partial-{}",
+                chrono::Utc::now().timestamp_millis()
+            ));
+            std::fs::rename(&install_root, &backup).map_err(|error| {
+                format!(
+                    "Could not preserve the incomplete Computer Use install at {}: {error}",
+                    backup.display()
+                )
+            })?;
+        }
+
+        std::fs::create_dir_all(&install_root)
+            .map_err(|error| format!("Could not prepare Computer Use: {error}"))?;
+        let archive = self
+            .client
+            .get(&self.lock.computer_use.archive_url)
+            .timeout(Duration::from_secs(180))
+            .send()
+            .await
+            .map_err(|error| format!("Could not download Computer Use: {error}"))?
+            .error_for_status()
+            .map_err(|error| format!("Computer Use download was rejected: {error}"))?
+            .bytes()
+            .await
+            .map_err(|error| format!("Could not read the Computer Use archive: {error}"))?;
+        let actual_hash = hex::encode(Sha256::digest(&archive));
+        if actual_hash != self.lock.computer_use.archive_sha256.to_lowercase() {
+            return Err(format!(
+                "Computer Use verification failed. Expected {}, received {}. Nothing was extracted.",
+                self.lock.computer_use.archive_sha256, actual_hash
+            ));
+        }
+
+        let archive_path = self
+            .paths
+            .staging
+            .join(format!("cua-driver-{}.zip", self.lock.computer_use.version));
+        std::fs::write(&archive_path, &archive)
+            .map_err(|error| format!("Could not stage Computer Use: {error}"))?;
         let log_path = self.paths.logs.join("computer-use-install.log");
-        let _ = tokio::task::spawn_blocking(move || {
+        let destination = install_root.clone();
+        tokio::task::spawn_blocking(move || -> Result<(), String> {
             let log = create_log(&log_path)?;
             let stderr = log.try_clone().map_err(|error| error.to_string())?;
-            let mut command = Command::new(executable);
+            let mut command = Command::new("powershell.exe");
             command
-                .args(["computer-use", "install"])
-                .env("HERMES_HOME", home)
+                .args([
+                    "-NoLogo",
+                    "-NoProfile",
+                    "-Command",
+                    "Expand-Archive -LiteralPath $env:PAPERS_CUA_ARCHIVE -DestinationPath $env:PAPERS_CUA_DESTINATION -Force",
+                ])
+                .env("PAPERS_CUA_ARCHIVE", &archive_path)
+                .env("PAPERS_CUA_DESTINATION", &destination)
                 .stdout(Stdio::from(log))
                 .stderr(Stdio::from(stderr));
             hide_console(&mut command);
-            command
+            let status = command
                 .status()
-                .map(|_| ())
-                .map_err(|error| error.to_string())
+                .map_err(|error| format!("Could not extract Computer Use: {error}"))?;
+            if status.success() {
+                Ok(())
+            } else {
+                Err(format!(
+                    "Computer Use extraction stopped with {status}. See {}.",
+                    log_path.display()
+                ))
+            }
         })
-        .await;
+        .await
+        .map_err(|error| format!("Computer Use installation task failed: {error}"))??;
+
+        if !executable.is_file() {
+            return Err(format!(
+                "Computer Use {} was extracted but {} is missing.",
+                self.lock.computer_use.release_tag,
+                executable.display()
+            ));
+        }
+        Ok(())
+    }
+
+    fn computer_use_executable(&self) -> std::path::PathBuf {
+        self.paths
+            .runtime
+            .join("computer-use")
+            .join(&self.lock.computer_use.version)
+            .join(&self.lock.computer_use.archive_root)
+            .join("cua-driver.exe")
     }
 
     fn write_guarded_config(&self) -> Result<(), String> {
@@ -506,7 +652,7 @@ impl RuntimeManager {
             release_tag: self.lock.release_tag.clone(),
             hermes_home: self.paths.hermes_home.to_string_lossy().into_owned(),
             install_dir: self.paths.hermes_install.to_string_lossy().into_owned(),
-            ws_url: port.map(|port| format!("ws://127.0.0.1:{port}/api/ws")),
+            ws_url: port.map(|_| "native://hermes".to_string()),
             message: message.to_string(),
         }
     }

@@ -1,6 +1,6 @@
 # Papers are Papers - Project Context and Handoff Rules
 
-Last updated: 2026-07-06  
+Last updated: 2026-07-07
 Canonical local repository: `C:\This is Minh\LapSlop brotherhood\Programs\Papers are papers\REAL`  
 GitHub: `https://github.com/Futahua/papers-are-papers`  
 Visibility: Private  
@@ -150,7 +150,7 @@ The AI should eventually:
 - Avoid reinventing agent infrastructure merely for the sake of owning it.
 - Admit uncertainty and ask a useful follow-up when it genuinely does not understand.
 
-**Partial:** the current code now contains a real Hermes Agent adapter, runtime manager, streaming conversation interface, approval handling, and local session records. Hermes has not yet been installed through Papers or signed into Nous Portal on the creator's machine, so no documentation may describe the agent as end-to-end verified yet.
+**Partial:** Papers has now installed its pinned Hermes Agent 0.18.0 runtime on the creator's machine, reached a healthy loopback server, and installed a hash-verified private Cua Driver 0.7.0. The native authenticated gateway bridge compiles, but its latest release build has not yet been launched because the local elevated-command allowance expired. Nous sign-in, a real model turn, and Windows operation remain unverified, so no documentation may describe the agent as end-to-end working yet.
 
 ### Data source
 
@@ -293,9 +293,10 @@ The repository currently contains:
 - A real Tauri Windows desktop application.
 - A React and TypeScript interface compiled by Vite and embedded in Tauri.
 - A Rust-native host responsible for local state, Hermes lifecycle, permissions, staged changes, and recovery records.
-- A real JSON-RPC client for Hermes Agent's TUI Gateway served by `hermes serve`.
+- A native Rust WebSocket bridge for Hermes Agent's authenticated TUI Gateway served by `hermes serve`; React receives typed frames through Tauri events and never receives the gateway token.
 - A pinned Hermes Agent 0.18.0 runtime definition tied to official tag `v2026.7.1` and commit `7c1a029`.
 - A verified-download installer path using the pinned official PowerShell installer hash.
+- A pinned, hash-verified Cua Driver 0.7.0 archive extracted privately under Papers without PATH changes, auto-start, or Administrator access.
 - A separate compact companion window and global shortcut registration.
 - A generated Inspect manifest that maps rendered interface elements back to source locations.
 - A guarded builder MCP executable restricted to Papers staging and unable to modify the protected trust boundary.
@@ -316,9 +317,16 @@ The presence of React, HTML, and CSS inside Tauri does not make this a website. 
 - All Rust targets compile, including Papers and the guarded MCP server.
 - Native tests pass for local session state, approval policy, and protected-path rejection.
 - The separate recovery launcher compiles and its healthy-version selection test passes.
-- The debug executable launched and remained responsive during a five-second native smoke test.
+- A self-contained optimized Windows release built and rendered the real first-run interface. A raw debug executable alone is not a valid visual smoke test because it expects Vite's development server.
 - A shortcut collision with an older Papers process was reproduced; the new app now continues safely without the shortcut instead of crashing.
 - The main interface, Inspect selection experience, and exact-size companion were visually inspected in a local browser render.
+- The frontend dependency audit reports zero known vulnerabilities after updating Tauri, Vite, and Vitest to compatible patched versions.
+- Papers rejected an incorrect Hermes installer checksum and executed nothing. The immutable official installer was independently verified, the lock was corrected, and the guard then accepted it.
+- Papers installed Hermes Agent 0.18.0, checked out the pinned commit, verified locked Python dependencies and baseline imports, and reached a healthy loopback `hermes serve`.
+- Failed Hermes partial installs were preserved, and a Papers-only Git configuration fixed Windows line-ending changes without modifying the creator's Git settings.
+- The private Cua Driver executable reports version 0.7.0 and matches the official release archive digest.
+- A disposable native-client smoke test authenticated with a per-launch token and received Hermes' real `gateway.ready` event without exposing a browser Origin.
+- All current Rust tests, the frontend Inspect test, strict type-checking, and the final self-contained release build pass.
 - The repository is private on GitHub.
 - Build output under `src-tauri/target` is ignored by Git.
 
@@ -328,7 +336,7 @@ The presence of React, HTML, and CSS inside Tauri does not make this a website. 
 - Presents the Agent-first main workspace with conversations, live activity, approvals, clarification prompts, and a global Ask composer.
 - Truthfully shows whether Hermes is absent, stopped, starting, ready, or failed.
 - Can download only the pinned official Hermes installer, verify its SHA-256 hash, and install it into Papers' private application-data directory.
-- Can start and stop `hermes serve` on a random loopback-only port and connect to its real WebSocket JSON-RPC channel.
+- Can start and stop `hermes serve` on a random loopback-only port. The native host owns the authenticated WebSocket and forwards frames to React through Tauri events.
 - Implements real Hermes session creation, prompt submission, streaming messages, tool events, clarification responses, approvals, and interruption.
 - Opens a compact companion through `Ctrl+Alt+Space` when that shortcut is available; the companion can target the current window, accept a request, pause, stop, and expand Papers.
 - Lets the creator enter Inspect mode, click a rendered Papers element, and describe a temporary self-change using real element and source metadata.
@@ -350,12 +358,13 @@ The presence of React, HTML, and CSS inside Tauri does not make this a website. 
 - Index the whole machine.
 - Provide production security.
 - Prove startup, memory, computer-control, or interaction performance at real scale.
+- Silently install or auto-start Computer Use outside Papers.
 
 The following have not yet been end-to-end verified on the creator's machine:
 
-- Papers-managed Hermes installation.
+- The latest native gateway bridge launched against the installed Hermes server.
 - Nous Portal OAuth and model selection.
-- Hermes Computer Use installation and operation against Windows programs.
+- Hermes Computer Use operation against Windows programs.
 - A real model response streamed into Papers.
 - A real self-edit produced by Hermes, experienced by the creator, accepted, pushed, and rolled back.
 - Offline GitHub retry and remote-divergence recovery.
@@ -392,20 +401,31 @@ What still needs to be designed:
 - Testing and performance budgets.
 - Runtime upgrade compatibility tests.
 
-No future agent should describe the agent as working merely because the bridge compiles. The next proof must include a real Hermes install and creator-tested task.
+No future agent should describe the agent as working merely because the bridge compiles. The next proof must launch the latest bridge, complete Nous sign-in, and perform a creator-tested task.
+
+### Current machine cleanup required
+
+An earlier broad `hermes computer-use install` test was stopped after it installed Cua outside Papers and registered the elevated `cua-driver-serve` scheduled task. Papers no longer uses that path. The process was stopped and the creator's User PATH is unchanged, but Windows denied task removal without elevation.
+
+Before the next experience test:
+
+- Remove the `cua-driver-serve` scheduled task through one visible, creator-approved UAC prompt.
+- Do not delete `%LOCALAPPDATA%\ms-playwright`, `%USERPROFILE%\.cua-driver`, or `%LOCALAPPDATA%\Programs\Cua` automatically; they may be shared. Papers now points Hermes to its own private driver instead.
+- Verify no Cua task starts at login.
 
 ## The next architectural milestone
 
 Exercise the Agent-first vertical slice with the creator:
 
-1. Install the pinned Hermes runtime from inside Papers.
-2. Sign into Nous Portal.
-3. Verify Hermes and Computer Use health.
-4. Complete one harmless operator task in a visible Windows program.
-5. Enter Inspect mode and request one visible Papers change.
-6. Build and experience the temporary version.
-7. Reject or keep it based on experience.
-8. If kept, verify the canonical `REAL` commit, GitHub push, version activation, and rollback.
+1. Remove the unintended elevated Cua auto-start task with the creator's visible approval.
+2. Launch the latest release and verify the native Hermes gateway reaches `gateway.ready`.
+3. Sign into Nous Portal.
+4. Verify Hermes and private Computer Use health.
+5. Complete one harmless inspect-only task in a visible Windows program.
+6. Enter Inspect mode and request one visible Papers change.
+7. Build and experience the temporary version.
+8. Reject or keep it based on experience.
+9. If kept, verify the canonical `REAL` commit, GitHub push, version activation, and rollback.
 
 Failures found during this exercise should harden the permanent Agent contract before Backpacks are generated.
 
@@ -653,3 +673,11 @@ A clean Tauri desktop repository was created. It compiles and launches as a Wind
 `REAL` became the canonical local working repository.
 
 The private GitHub repository `Futahua/papers-are-papers` was created and synchronized on branch `main`.
+
+### 2026-07-07 - Managed runtime exercised and hardened
+
+Papers installed the pinned Hermes Agent 0.18.0 runtime and reached a healthy loopback server. The exercise exposed and fixed an incorrect installer hash, Windows line-ending failures in the upstream fallback path, frontend/native Tauri version drift, vulnerable development dependencies, and an unreachable direct browser WebSocket.
+
+Computer Use is now pinned to Cua Driver 0.7.0, verified against the publisher's SHA-256, and extracted privately without PATH changes or auto-start. Hermes gateway traffic now crosses a native Tauri bridge so the per-launch token remains in Rust memory.
+
+The latest release build and automated checks pass. Launch verification, Nous sign-in, and a real task remain pending. One unintended elevated Cua scheduled task created by the superseded installer path still requires a visible creator-approved UAC removal.

@@ -90,4 +90,19 @@ pub struct HermesLock {
     pub installer_url: String,
     #[serde(rename = "installerSha256")]
     pub installer_sha256: String,
+    #[serde(rename = "computerUse")]
+    pub computer_use: ComputerUseLock,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ComputerUseLock {
+    pub version: String,
+    #[serde(rename = "releaseTag")]
+    pub release_tag: String,
+    #[serde(rename = "archiveUrl")]
+    pub archive_url: String,
+    #[serde(rename = "archiveSha256")]
+    pub archive_sha256: String,
+    #[serde(rename = "archiveRoot")]
+    pub archive_root: String,
 }

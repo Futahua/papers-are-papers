@@ -1,3 +1,5 @@
+import { invoke } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { GatewayEvent, GatewayFrame } from "./types";
 
 type PendingCall = {
@@ -14,7 +16,8 @@ export type ConnectionState =
   | "error";
 
 export class HermesGateway {
-  private socket: WebSocket | null = null;
+  private unlistenFrame: UnlistenFn | null = null;
+  private unlistenClosed: UnlistenFn | null = null;
   private nextId = 0;
   private pending = new Map<number, PendingCall>();
   private eventHandlers = new Set<(event: GatewayEvent) => void>();
@@ -25,61 +28,26 @@ export class HermesGateway {
     return this.state;
   }
 
-  async connect(url: string): Promise<void> {
-    if (this.socket?.readyState === WebSocket.OPEN) {
+  async connect(_url: string): Promise<void> {
+    if (this.state === "open") {
       return;
     }
 
     this.setState("connecting");
-    const socket = new WebSocket(url);
-    this.socket = socket;
-
-    socket.addEventListener("message", (message) => {
-      if (this.socket === socket) {
-        this.handleMessage(String(message.data));
-      }
-    });
-
-    socket.addEventListener("close", () => {
-      if (this.socket !== socket) {
-        return;
-      }
-      this.socket = null;
-      this.rejectPending(new Error("Hermes disconnected"));
-      this.setState("closed");
-    });
-
-    await new Promise<void>((resolve, reject) => {
-      const timer = window.setTimeout(() => {
-        socket.close();
-        reject(new Error("Hermes did not open its control channel in time"));
-      }, 15_000);
-
-      socket.addEventListener(
-        "open",
-        () => {
-          window.clearTimeout(timer);
-          this.setState("open");
-          resolve();
-        },
-        { once: true },
-      );
-
-      socket.addEventListener(
-        "error",
-        () => {
-          window.clearTimeout(timer);
-          this.setState("error");
-          reject(new Error("Could not connect to Hermes"));
-        },
-        { once: true },
-      );
-    });
+    await this.attachListeners();
+    try {
+      await invoke<void>("gateway_connect");
+      this.setState("open");
+    } catch (reason) {
+      this.setState("error");
+      throw reason;
+    }
   }
 
   close(): void {
-    this.socket?.close();
-    this.socket = null;
+    void invoke<void>("gateway_disconnect");
+    this.rejectPending(new Error("Hermes disconnected"));
+    this.setState("closed");
   }
 
   onEvent(handler: (event: GatewayEvent) => void): () => void {
@@ -98,7 +66,7 @@ export class HermesGateway {
     params: Record<string, unknown> = {},
     timeoutMs = 120_000,
   ): Promise<T> {
-    if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
+    if (this.state !== "open") {
       return Promise.reject(new Error("Hermes is not connected"));
     }
 
@@ -115,10 +83,34 @@ export class HermesGateway {
         timer,
       });
 
-      this.socket?.send(
-        JSON.stringify({ jsonrpc: "2.0", id, method, params }),
-      );
+      void invoke<void>("gateway_send", {
+        frame: JSON.stringify({ jsonrpc: "2.0", id, method, params }),
+      }).catch((reason: unknown) => {
+        const pending = this.pending.get(id);
+        if (!pending) return;
+        window.clearTimeout(pending.timer);
+        this.pending.delete(id);
+        pending.reject(reason instanceof Error ? reason : new Error(String(reason)));
+      });
     });
+  }
+
+  private async attachListeners(): Promise<void> {
+    if (!this.unlistenFrame) {
+      this.unlistenFrame = await listen<string>(
+        "papers://gateway-frame",
+        ({ payload }) => this.handleMessage(payload),
+      );
+    }
+    if (!this.unlistenClosed) {
+      this.unlistenClosed = await listen<string>(
+        "papers://gateway-closed",
+        ({ payload }) => {
+          this.rejectPending(new Error(payload || "Hermes disconnected"));
+          this.setState("closed");
+        },
+      );
+    }
   }
 
   private handleMessage(raw: string): void {

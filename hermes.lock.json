@@ -3,7 +3,14 @@
   "releaseTag": "v2026.7.1",
   "commit": "7c1a029553d87c43ecff8a3821336bc95872213b",
   "installerUrl": "https://raw.githubusercontent.com/NousResearch/hermes-agent/7c1a029553d87c43ecff8a3821336bc95872213b/scripts/install.ps1",
-  "installerSha256": "529405e2e1c273d29a5ec777573ed0263f99c83308ea2a819c2643818e6a2a15",
+  "installerSha256": "575a15041a7c86f2674f878fab51ab9e0376f3e429b9e65bab48859c5df62bcd",
+  "computerUse": {
+    "version": "0.7.0",
+    "releaseTag": "cua-driver-rs-v0.7.0",
+    "archiveUrl": "https://github.com/trycua/cua/releases/download/cua-driver-rs-v0.7.0/cua-driver-rs-0.7.0-windows-x86_64.zip",
+    "archiveSha256": "4411ee029ba09125cf88fd373601991a9475dbbd3771b58eebb713c90961b6ef",
+    "archiveRoot": "cua-driver-rs-0.7.0-windows-x86_64"
+  },
   "protocol": "tui-gateway-json-rpc",
   "upgradePolicy": "manual-after-compatibility-check"
 }

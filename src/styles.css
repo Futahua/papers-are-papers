@@ -1309,6 +1309,39 @@ input:focus-visible {
   }
 }
 
+@media (max-height: 650px) {
+  .welcome {
+    padding-bottom: 125px;
+  }
+
+  .agent-orbit {
+    width: 60px;
+    height: 60px;
+    margin-bottom: 10px;
+  }
+
+  .agent-core {
+    width: 40px;
+    height: 40px;
+  }
+
+  .welcome > .eyebrow {
+    margin-bottom: 8px;
+  }
+
+  .welcome h1 {
+    font-size: 38px;
+  }
+
+  .welcome-copy {
+    display: none;
+  }
+
+  .setup-card {
+    margin-top: 16px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

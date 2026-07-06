@@ -12,6 +12,7 @@ tauri-build = { version = "2.5.6", features = [] }
 [dependencies]
 chrono = { version = "0.4", features = ["serde"] }
 dirs = "6"
+futures-util = "0.3"
 hex = "0.4"
 open = "5"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
@@ -22,7 +23,8 @@ serde_yaml = "0.9"
 sha2 = "0.10"
 tauri = { version = "2.11.5", features = [] }
 tauri-plugin-global-shortcut = "2"
-tokio = { version = "1", features = ["process", "time"] }
+tokio = { version = "1", features = ["macros", "process", "sync", "time"] }
+tokio-tungstenite = "0.28"
 uuid = { version = "1", features = ["v4", "serde"] }
 walkdir = "2"
 
