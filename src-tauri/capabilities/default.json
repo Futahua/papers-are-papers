@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "The minimum capability set for the empty Papers window.",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}
