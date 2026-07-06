@@ -262,63 +262,19 @@ Possible lesson:
 
 Do not summarize the product as a mixture of these applications. Each reference contributes only specific behavior.
 
-## Historical context and superseded material
+## Where the project came from
 
-### Gemini-generated proof of concept
+The project began with a one-shot proof of concept. That experiment helped the creator make the idea visible, but it also blurred the difference between genuine behavior, visual simulation, and long-term product intent.
 
-An earlier Google Gemini/AI Studio-generated program exists at:
-
-`C:\This is Minh\LapSlop brotherhood\Programs\Papers are papers\papers-are-papers-gemini-generated`
-
-It demonstrated:
-
-- A note-management shell.
-- A sidebar.
-- A basic editor.
-- Search.
-- A dashboard.
-- An AI panel.
-- A Tauri desktop build.
-
-It also contained many stubs, mock behaviors, and exaggerated documentation claims.
-
-It is reference material only. It is not the canonical codebase, and future work must not modify or build on it by default.
-
-Use only specific ideas or lessons that remain relevant.
-
-### Older architectural plan
-
-Older planning documents emphasized AI-generated standalone "Experiences" as the central product.
-
-That concept may still contribute useful ideas, but it no longer fully describes the latest vision.
-
-The newer Backpack model is broader:
+The original concept emphasized AI-generated "Experiences." Through later clarification, the broader Backpack model emerged:
 
 - Backpacks are persistent rooms or lenses.
-- They are not necessarily generated mini-apps.
-- They are not isolated.
-- They use shared data and shared Tools.
-- Papers is a system-wide personal layer, not merely a host for generated HTML experiences.
+- They can overlap and use shared information.
+- Tools can persist across Backpacks.
+- The AI is global rather than trapped inside one room.
+- Papers is a personal layer over the existing machine, not merely a host for generated mini-apps.
 
-When older Experience language conflicts with current Backpack language, the current Backpack model wins.
-
-### Sketches and draft notes
-
-The creator's newer sketches and notes are stored at:
-
-`C:\This is Minh\LapSlop brotherhood\Programs\Papers are papers\sayings\pages`
-
-They are important product-intent references.
-
-They are drafts rather than implementation truth. Interpret them alongside the creator's latest clarification.
-
-### Disposable HTML prototype
-
-A standalone browser prototype was briefly created while the request was misunderstood as a request for a behavioral mock.
-
-It is not the real application and should not be used as the canonical foundation.
-
-The creator wanted a real, intentionally empty app, not a fake app-like webpage.
+This history matters only because it explains why the current repository is a deliberate clean restart. Obsolete experiments and their local files are not part of the canonical project and should not appear in routine documentation or handoffs.
 
 ## Current canonical implementation
 
@@ -468,9 +424,7 @@ For product intent:
 
 1. The creator's latest explicit instruction.
 2. Confirmed decisions in this document.
-3. The latest sketches and behavior references.
-4. Older planning documents.
-5. The Gemini-generated proof of concept.
+3. Current behavior references explicitly brought into the active discussion.
 
 For implementation reality:
 
@@ -478,7 +432,6 @@ For implementation reality:
 2. Automated test and build evidence.
 3. Current source code.
 4. This document.
-5. Older handoff documents.
 
 If the code and documentation disagree, report the disagreement and correct the documentation or implementation deliberately. Do not silently choose the more flattering version.
 
@@ -489,6 +442,19 @@ If the code and documentation disagree, report the disagreement and correct the 
 This file is the primary living context. Do not create competing "final," "latest," or "new-new" context files.
 
 Supporting documents may exist for focused topics, but they must link back here and state their scope.
+
+### Keep obsolete material out of normal handoffs
+
+Do not catalogue obsolete experiments, abandoned files, discarded prototypes, or external local folders that are not part of the canonical Git repository.
+
+When history is genuinely needed to understand a current decision:
+
+- Summarize the lesson.
+- Explain how it shaped the present product.
+- Omit irrelevant filenames, paths, inventories, and implementation details.
+- Do not encourage future agents to inspect obsolete material unless the creator explicitly asks.
+
+The purpose of history is orientation, not archaeology.
 
 ### Update documentation with meaningful changes
 
@@ -604,8 +570,8 @@ The smallest question whose answer unlocks the next meaningful step.
 
 1. Read this document before acting.
 2. Treat `REAL` as the canonical repository.
-3. Do not modify the Gemini-generated project unless explicitly asked.
-4. Do not treat the old Experience architecture as automatically current.
+3. Do not inspect, modify, or document obsolete external artifacts unless explicitly asked.
+4. Treat the older Experience concept only as summarized origin context; the current Backpack model wins.
 5. Ask about desired behavior in plain language.
 6. Make technical choices on the creator's behalf when they are reversible and clearly within scope.
 7. Explain only the tradeoffs that materially affect the creator.
@@ -641,11 +607,9 @@ The smallest question whose answer unlocks the next meaningful step.
 
 ## Decision log
 
-### 2026-07-05 - Gemini proof of concept reviewed
+### 2026-07-06 - Clean restart around the clarified vision
 
-The existing generated project was recognized as a proof of concept with useful reference material, functioning note CRUD, and many mocked or stubbed systems. It was not adopted as the production foundation.
-
-### 2026-07-06 - Product vision clarified
+The initial proof of concept made the idea tangible but blurred visual simulation with real systems, so it was not adopted as the production foundation.
 
 The creator clarified that Papers is broader than an AI-generated Experience host. It is intended as a universal personal layer over the existing machine.
 
@@ -654,10 +618,6 @@ Backpacks were clarified as overlapping rooms or ways of interacting with shared
 ### 2026-07-06 - First Backpack chosen
 
 The first intended Backpack was confirmed as a knowledge-management, second-brain, or Life OS Backpack. The architecture-work Backpack remains an example only.
-
-### 2026-07-06 - Disposable webpage rejected as the real foundation
-
-A standalone HTML behavioral prototype was recognized as the wrong artifact for the creator's request. The creator wanted a real desktop app whose current state is genuinely empty.
 
 ### 2026-07-06 - Native empty desktop foundation created
 
@@ -668,4 +628,3 @@ A clean Tauri desktop repository was created. It compiles and launches as a Wind
 `REAL` became the canonical local working repository.
 
 The private GitHub repository `Futahua/papers-are-papers` was created and synchronized on branch `main`.
-
