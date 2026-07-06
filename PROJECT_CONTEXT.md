@@ -297,6 +297,7 @@ The repository currently contains:
 - A pinned Hermes Agent 0.18.0 runtime definition tied to official tag `v2026.7.1` and commit `7c1a029`.
 - A verified-download installer path using the pinned official PowerShell installer hash.
 - A pinned, hash-verified Cua Driver 0.7.0 archive extracted privately under Papers without PATH changes, auto-start, or Administrator access.
+- A restricted Hermes installer environment that hides Windows package-manager shims, so optional tools cannot silently install outside Papers.
 - A separate compact companion window and global shortcut registration.
 - A generated Inspect manifest that maps rendered interface elements back to source locations.
 - A guarded builder MCP executable restricted to Papers staging and unable to modify the protected trust boundary.
@@ -405,12 +406,13 @@ No future agent should describe the agent as working merely because the bridge c
 
 ### Current machine cleanup required
 
-An earlier broad `hermes computer-use install` test was stopped after it installed Cua outside Papers and registered the elevated `cua-driver-serve` scheduled task. Papers no longer uses that path. The process was stopped and the creator's User PATH is unchanged, but Windows denied task removal without elevation.
+Earlier broad installer tests installed ffmpeg and Cua outside Papers, then registered the elevated `cua-driver-serve` scheduled task. Papers no longer uses either path. The process was stopped and the creator's User PATH is unchanged, but Windows denied task removal without elevation.
 
 Before the next experience test:
 
 - Remove the `cua-driver-serve` scheduled task through one visible, creator-approved UAC prompt.
 - Do not delete `%LOCALAPPDATA%\ms-playwright`, `%USERPROFILE%\.cua-driver`, or `%LOCALAPPDATA%\Programs\Cua` automatically; they may be shared. Papers now points Hermes to its own private driver instead.
+- Do not automatically uninstall ffmpeg; it may now be shared by other applications.
 - Verify no Cua task starts at login.
 
 ## The next architectural milestone

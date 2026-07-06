@@ -180,6 +180,9 @@ impl RuntimeManager {
                 .env("PLAYWRIGHT_BROWSERS_PATH", paths.runtime.join("playwright"))
                 .stdout(Stdio::from(log))
                 .stderr(Stdio::from(stderr));
+            if let Some(path) = installer_path_without_package_managers() {
+                command.env("PATH", path);
+            }
             hide_console(&mut command);
             let install_result = command
                 .status()
@@ -680,6 +683,21 @@ fn hide_console(command: &mut Command) {
     command.creation_flags(CREATE_NO_WINDOW);
 }
 
+fn installer_path_without_package_managers() -> Option<std::ffi::OsString> {
+    let current = std::env::var_os("PATH")?;
+    let entries = std::env::split_paths(&current)
+        .filter(|entry| installer_path_entry_allowed(entry))
+        .collect::<Vec<_>>();
+    std::env::join_paths(entries).ok()
+}
+
+fn installer_path_entry_allowed(entry: &std::path::Path) -> bool {
+    let normalized = entry.to_string_lossy().replace('/', "\\").to_lowercase();
+    !normalized.contains("\\windowsapps")
+        && !normalized.contains("\\chocolatey\\bin")
+        && !normalized.contains("\\scoop\\shims")
+}
+
 fn read_user_environment(name: &str) -> Option<String> {
     let script = format!(
         "[Environment]::GetEnvironmentVariable('{}', 'User')",
@@ -694,6 +712,31 @@ fn read_user_environment(name: &str) -> Option<String> {
         .filter(|output| output.status.success())
         .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string())
         .filter(|value| !value.is_empty())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::installer_path_entry_allowed;
+    use std::path::Path;
+
+    #[test]
+    fn installer_path_hides_system_package_manager_shims() {
+        assert!(!installer_path_entry_allowed(Path::new(
+            r"C:\Users\person\AppData\Local\Microsoft\WindowsApps"
+        )));
+        assert!(!installer_path_entry_allowed(Path::new(
+            r"C:\ProgramData\chocolatey\bin"
+        )));
+        assert!(!installer_path_entry_allowed(Path::new(
+            r"C:\Users\person\scoop\shims"
+        )));
+        assert!(installer_path_entry_allowed(Path::new(
+            r"C:\Program Files\Git\cmd"
+        )));
+        assert!(installer_path_entry_allowed(Path::new(
+            r"C:\Program Files\nodejs"
+        )));
+    }
 }
 
 fn restore_user_environment(name: &str, value: Option<&str>) -> Result<(), String> {
