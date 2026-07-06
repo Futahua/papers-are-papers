@@ -1,9 +1,12 @@
 {
   "productName": "PAPERS ARE PAPERS",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "identifier": "com.papers.desktop",
   "build": {
-    "frontendDist": "../ui"
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
   },
   "app": {
     "windows": [
@@ -17,10 +20,28 @@
         "center": true,
         "resizable": true,
         "fullscreen": false
+      },
+      {
+        "label": "companion",
+        "title": "Papers Agent",
+        "url": "index.html?companion",
+        "width": 430,
+        "height": 112,
+        "minWidth": 430,
+        "minHeight": 112,
+        "maxWidth": 430,
+        "maxHeight": 112,
+        "resizable": false,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "visible": false,
+        "center": false
       }
     ],
     "security": {
-      "csp": "default-src 'self'; style-src 'self'; img-src 'self' data:"
+      "csp": "default-src 'self'; connect-src 'self' ws://127.0.0.1:* http://127.0.0.1:*; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:"
     }
   },
   "bundle": {

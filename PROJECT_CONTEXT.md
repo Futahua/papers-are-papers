@@ -150,7 +150,7 @@ The AI should eventually:
 - Avoid reinventing agent infrastructure merely for the sake of owning it.
 - Admit uncertainty and ask a useful follow-up when it genuinely does not understand.
 
-The global AI is not connected in the current app.
+**Partial:** the current code now contains a real Hermes Agent adapter, runtime manager, streaming conversation interface, approval handling, and local session records. Hermes has not yet been installed through Papers or signed into Nous Portal on the creator's machine, so no documentation may describe the agent as end-to-end verified yet.
 
 ### Data source
 
@@ -180,11 +180,13 @@ These principles should be treated as stronger than individual features unless t
 14. Performance and experience are both product requirements.
 15. The creator's current instruction overrides older documents, prototypes, and assumptions.
 
-## The first intended Backpack
+## Current priority and deferred first Backpack
 
-The first Backpack to design is a knowledge-management, second-brain, or Life OS Backpack.
+**Superseded:** manually designing the Life OS Backpack is no longer the first implementation target.
 
-The architecture-work Backpack described in early sketches was an example demonstrating the range of possible Backpacks. It is not the first implementation target.
+**Confirmed decision:** the first priority is a solid global AI operator and inline editor. The creator intends to rely on that agent to create and revise future Backpacks through experience-driven requests rather than requiring a human or coding agent to pre-design every Backpack.
+
+**Deferred:** the first generated Backpack is still expected to be a knowledge-management, second-brain, or Life OS Backpack once the agent foundation has earned enough trust.
 
 The first Life OS Backpack should eventually help the creator:
 
@@ -286,68 +288,83 @@ The private GitHub repository is:
 
 `https://github.com/Futahua/papers-are-papers`
 
-Current commit at the time this document was prepared:
-
-`5c3f396 - Create empty Papers desktop foundation`
-
 The repository currently contains:
 
 - A real Tauri Windows desktop application.
-- A minimal Rust-native host process.
-- A static HTML/CSS interface embedded inside the desktop window.
-- A restrictive starting capability set.
+- A React and TypeScript interface compiled by Vite and embedded in Tauri.
+- A Rust-native host responsible for local state, Hermes lifecycle, permissions, staged changes, and recovery records.
+- A real JSON-RPC client for Hermes Agent's TUI Gateway served by `hermes serve`.
+- A pinned Hermes Agent 0.18.0 runtime definition tied to official tag `v2026.7.1` and commit `7c1a029`.
+- A verified-download installer path using the pinned official PowerShell installer hash.
+- A separate compact companion window and global shortcut registration.
+- A generated Inspect manifest that maps rendered interface elements back to source locations.
+- A guarded builder MCP executable restricted to Papers staging and unable to modify the protected trust boundary.
+- SQLite tables for Papers conversations, streamed events, approvals, self-edit records, and pending GitHub synchronization.
+- Git-worktree services for temporary self-edits, builds, previews, acceptance, rejection, and source rollback.
+- A separate protected recovery launcher crate that starts the active healthy version and falls back to the previous one.
 - A deterministic placeholder application icon.
-- A Cargo lockfile.
+- Locked frontend, native-app, and launcher dependencies.
 - Generated Tauri schemas.
 
-The presence of HTML and CSS inside Tauri does not make this a website. They currently draw the interface inside a real desktop application. Machine access, background work, and privileged behavior must remain in the native application layer rather than being faked in the interface.
+The presence of React, HTML, and CSS inside Tauri does not make this a website. They draw the interface inside a real desktop application. Machine access, background work, installation, source changes, Git operations, and recovery remain in the native layer.
 
 ### What has been verified
 
-- The committed source compiled successfully as a Windows Tauri desktop app.
-- The debug executable launched.
-- The main window title was `PAPERS ARE PAPERS`.
-- The process remained responsive during the launch check.
+- The React/TypeScript source passes strict type-checking.
+- The frontend production bundle builds and emits an Inspect source manifest.
+- The frontend Inspect metadata test passes.
+- All Rust targets compile, including Papers and the guarded MCP server.
+- Native tests pass for local session state, approval policy, and protected-path rejection.
+- The separate recovery launcher compiles and its healthy-version selection test passes.
+- The debug executable launched and remained responsive during a five-second native smoke test.
+- A shortcut collision with an older Papers process was reproduced; the new app now continues safely without the shortcut instead of crashing.
+- The main interface, Inspect selection experience, and exact-size companion were visually inspected in a local browser render.
 - The repository is private on GitHub.
-- The `main` branch is synchronized between `REAL` and GitHub.
 - Build output under `src-tauri/target` is ignored by Git.
 
 ### What the current app honestly does
 
 - Opens a real desktop window.
-- Displays the intentionally empty starting state.
-- Shows that there is no Backpack.
-- Shows zero Tools.
-- Shows Settings as unset.
-- Shows that no AI agent is connected.
-- Provides a minimal permanent-shell concept for Basic and Ask.
+- Presents the Agent-first main workspace with conversations, live activity, approvals, clarification prompts, and a global Ask composer.
+- Truthfully shows whether Hermes is absent, stopped, starting, ready, or failed.
+- Can download only the pinned official Hermes installer, verify its SHA-256 hash, and install it into Papers' private application-data directory.
+- Can start and stop `hermes serve` on a random loopback-only port and connect to its real WebSocket JSON-RPC channel.
+- Implements real Hermes session creation, prompt submission, streaming messages, tool events, clarification responses, approvals, and interruption.
+- Opens a compact companion through `Ctrl+Alt+Space` when that shortcut is available; the companion can target the current window, accept a request, pause, stop, and expand Papers.
+- Lets the creator enter Inspect mode, click a rendered Papers element, and describe a temporary self-change using real element and source metadata.
+- Persists Papers-specific state locally in SQLite without duplicating Hermes' own conversation memory.
+- Creates isolated Git worktrees for self-edit records and exposes restricted builder tools within the staging root.
+- Can build, launch, accept, reject, and roll back staged source versions through explicit native commands.
+- Keeps the protected runtime, permission policy, MCP boundary, Hermes lock, and launcher out of the builder's writable surface.
 
 ### What the current app does not do
 
 - Create, open, save, or switch Backpacks.
-- Connect or run Tools.
-- Store Settings.
-- Connect to an AI agent.
-- Read files or databases.
-- Index or search the machine.
-- Run in the background.
+- Present a complete Settings experience.
 - Start with Windows.
 - Use a system tray.
-- Persist application state.
-- Manage permissions beyond its minimal starting capability.
 - Install itself.
-- Update itself.
-- Recover from crashes.
-- Record history.
+- Automatically update its protected launcher or trust boundary.
+- Guarantee control of elevated Administrator windows.
+- Type passwords, payment details, or two-factor codes.
+- Index the whole machine.
 - Provide production security.
-- Provide production logging or diagnostics.
-- Prove startup, memory, indexing, or interaction performance at real scale.
+- Prove startup, memory, computer-control, or interaction performance at real scale.
 
-The empty UI controls intentionally do not pretend these systems exist.
+The following have not yet been end-to-end verified on the creator's machine:
+
+- Papers-managed Hermes installation.
+- Nous Portal OAuth and model selection.
+- Hermes Computer Use installation and operation against Windows programs.
+- A real model response streamed into Papers.
+- A real self-edit produced by Hermes, experienced by the creator, accepted, pushed, and rolled back.
+- Offline GitHub retry and remote-divergence recovery.
+
+Those paths contain real implementation, not canned responses, but they remain **Partial** until exercised with the external runtime and creator.
 
 ## Current architectural assessment
 
-The current app is a sound minimal native seed. It is not a complete or "perfect" architecture for the full vision.
+The current app is an Agent-first vertical-slice foundation. It is substantially beyond the empty native seed, but it is not a complete or production-safe personal operating layer.
 
 What is directionally correct:
 
@@ -355,51 +372,42 @@ What is directionally correct:
 - Tauri as a lightweight native host.
 - Rust available for machine-level responsibilities.
 - A flexible interface layer.
-- Restrictive initial permissions.
+- A narrow protected trust boundary for self-edits.
 - Independent clean repository.
-- Very little existing technical debt.
+- A real external-agent protocol rather than a simulated chat.
+- Durable local activity and change records.
+- Recovery logic that is structurally separate from AI-editable source.
 
 What still needs to be designed:
 
 - Backpack contract and lifecycle.
 - Tool registry and lifecycle.
 - Data Source contract.
-- Agent adapter contract.
-- Shared event and task model.
-- Durable local state.
+- The final operator-tool contract for whole-PC work.
 - Search and indexing.
-- Permission and approval model.
+- Complete interception and preview coverage for every mutating Hermes tool.
 - Secrets and credentials.
 - Background operation.
-- Recovery and history.
+- Packaging and installation of the protected launcher.
 - Testing and performance budgets.
-- Installation and updates.
+- Runtime upgrade compatibility tests.
 
-No future agent should describe the architecture as finished merely because the empty window builds.
+No future agent should describe the agent as working merely because the bridge compiles. The next proof must include a real Hermes install and creator-tested task.
 
 ## The next architectural milestone
 
-Before implementing the Life OS Backpack, define four small permanent contracts in plain language:
+Exercise the Agent-first vertical slice with the creator:
 
-1. Backpack.
-2. Tool.
-3. Data Source.
-4. Agent.
+1. Install the pinned Hermes runtime from inside Papers.
+2. Sign into Nous Portal.
+3. Verify Hermes and Computer Use health.
+4. Complete one harmless operator task in a visible Windows program.
+5. Enter Inspect mode and request one visible Papers change.
+6. Build and experience the temporary version.
+7. Reject or keep it based on experience.
+8. If kept, verify the canonical `REAL` commit, GitHub push, version activation, and rollback.
 
-For each contract, establish:
-
-- What it represents to the user.
-- What it owns.
-- What it may reference.
-- What it may never own.
-- How it is created.
-- How it is found.
-- How it changes.
-- How it is disabled or removed.
-- What survives application restarts.
-- How permissions and failure are shown.
-
-Do not build an elaborate framework before these meanings are settled.
+Failures found during this exercise should harden the permanent Agent contract before Backpacks are generated.
 
 ## Decision status language
 
@@ -591,18 +599,13 @@ The smallest question whose answer unlocks the next meaningful step.
 
 ## Current open questions
 
-- What should the Life OS Backpack show immediately when entered?
-- What is the smallest real dataset that should demonstrate it?
 - What is the exact Backpack contract?
 - What is the exact Tool contract?
 - What counts as a Data Source?
-- Which existing agent harness should Papers connect to first?
-- How should the global AI behave when uncertain?
-- Which actions require explicit approval?
-- What state should persist across restarts?
-- What should Papers do while no Backpack exists?
+- Which Nous model gives the best balance of Windows control, judgment, speed, and usage cost?
+- Which Hermes actions do not emit enough information for Papers' exact-preview promise and therefore must remain disabled or wrapped?
+- Should the companion start automatically with Windows after the first successful end-to-end test?
 - How minimal should Basic remain?
-- When should Papers run in the background?
 - What measurable performance targets define "lightweight"?
 
 ## Decision log
@@ -618,6 +621,28 @@ Backpacks were clarified as overlapping rooms or ways of interacting with shared
 ### 2026-07-06 - First Backpack chosen
 
 The first intended Backpack was confirmed as a knowledge-management, second-brain, or Life OS Backpack. The architecture-work Backpack remains an example only.
+
+### 2026-07-06 - Agent-first priority supersedes Backpack-first implementation
+
+The creator decided that manually implementing a first Backpack is no longer the immediate goal. Papers must first gain a solid AI operator and inline editor capable of creating future Backpacks from desired behavior.
+
+Hermes Agent was chosen as the engine behind Papers' own interface. Hermes WebUI remains a reference only.
+
+Confirmed experience decisions:
+
+- Global Ask plus element selection.
+- Whole-PC operator visibility under the creator's normal Windows account.
+- Full visual Windows control through Hermes Computer Use.
+- Exact previews before consequential actions.
+- A compact live companion with Pause, Stop, Expand, and inline Ask.
+- Staged self-edits with a temporary build, Keep, Revise, Reject, GitHub synchronization, and protected rollback.
+- A Papers-managed, pinned Hermes runtime using Nous Portal sign-in.
+
+### 2026-07-06 - Agent-first vertical slice implemented
+
+Papers now contains the real native and interface foundations for the confirmed Agent-first direction. The bridge, local records, policy checks, Inspect metadata, staged Git services, restricted builder MCP, and recovery launcher compile and have local automated coverage.
+
+The external milestone remains partial until Hermes is installed, signed in, and exercised end to end with the creator.
 
 ### 2026-07-06 - Native empty desktop foundation created
 

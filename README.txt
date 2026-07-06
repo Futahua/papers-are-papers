@@ -1,24 +1,48 @@
-PAPERS ARE PAPERS - DESKTOP FOUNDATION
+PAPERS ARE PAPERS — AGENT-FIRST FOUNDATION
 
-This is the real, intentionally empty Windows desktop application foundation.
+Papers is a native Windows workspace that puts a guarded AI operator between
+the creator's intent and the computer.
 
 CURRENT TRUTH
 
-- No backpack exists.
-- No tools are connected.
-- No settings have been chosen.
-- No AI agent is connected.
+- The application, Hermes protocol client, local state, companion, Inspect
+  mode, staged self-edit services, restricted builder tools, and recovery
+  launcher are real code.
+- Hermes Agent is pinned to package version 0.18.0 from official release tag
+  v2026.7.1 and commit 7c1a029.
+- Papers does not contain Hermes WebUI and does not generate fake AI replies.
+- A real Hermes installation, Nous sign-in, Windows Computer Use task, and
+  AI-produced self-edit still require creator-tested end-to-end verification.
+- Backpacks are deferred until this agent foundation is trustworthy enough to
+  generate them from desired behavior.
 
-The application does not simulate any of those features. It only establishes
-the permanent shell and honestly displays the empty state from which the
-product will grow.
+RUN FOR DEVELOPMENT
 
-BUILD
+From the repository root:
 
-From the src-tauri folder:
+    npm install
+    npm run tauri dev
 
-    cargo build
+BUILD AND TEST
 
-The Windows executable is created at:
+    npm run check
+    npm run test
+    npm run build
+
+From src-tauri:
+
+    cargo test --all-targets --locked
+    cargo build --locked --bins
+
+From launcher:
+
+    cargo test --locked
+    cargo build --locked
+
+The debug executables are:
 
     src-tauri/target/debug/papers.exe
+    src-tauri/target/debug/papers-mcp.exe
+    launcher/target/debug/papers-launcher.exe
+
+The canonical product context and handoff rules are in PROJECT_CONTEXT.md.

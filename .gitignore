@@ -1,3 +1,7 @@
 /src-tauri/target/
+/launcher/target/
+/node_modules/
+/dist/
+*.log
 **/*.rs.bk
 .DS_Store

@@ -1,0 +1,9 @@
+{
+  "packageVersion": "0.18.0",
+  "releaseTag": "v2026.7.1",
+  "commit": "7c1a029553d87c43ecff8a3821336bc95872213b",
+  "installerUrl": "https://raw.githubusercontent.com/NousResearch/hermes-agent/7c1a029553d87c43ecff8a3821336bc95872213b/scripts/install.ps1",
+  "installerSha256": "529405e2e1c273d29a5ec777573ed0263f99c83308ea2a819c2643818e6a2a15",
+  "protocol": "tui-gateway-json-rpc",
+  "upgradePolicy": "manual-after-compatibility-check"
+}
