@@ -1,4 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
+// Exported so .tsx files can name the agent's API without writing
+// `ReturnType<typeof useAgent>` inline — the papers-inspect-manifest Vite
+// plugin rewrites lowercase identifiers right after `<` (e.g. `<typeof`)
+// as JSX, which would break those generics. `.ts` files are not transformed.
 import { HermesGateway, type ConnectionState } from "./gateway";
 import { papers } from "./papers";
 import type {
@@ -718,3 +723,5 @@ export function useAgent() {
     setError,
   };
 }
+
+export type AgentApi = ReturnType<typeof useAgent>;

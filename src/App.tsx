@@ -37,8 +37,9 @@ import {
 } from "react";
 import { inspectElement } from "./inspect";
 import { papers } from "./papers";
-import type { AgentProviderStatus, ChangeRecord, InspectSelection } from "./types";
+import type { ChangeRecord, InspectSelection } from "./types";
 import { useAgent } from "./use-agent";
+import { SettingsWizard } from "./SettingsWizard";
 
 const stateCopy: Record<string, string> = {
   idle: "Ready",
@@ -153,16 +154,8 @@ export function App() {
   const [clarifyAnswer, setClarifyAnswer] = useState("");
   const [foreground, setForeground] = useState("your current app");
   const [changes, setChanges] = useState<ChangeRecord[]>([]);
-  const [setupMessage, setSetupMessage] = useState("");
-  const [providerStatus, setProviderStatus] =
-    useState<AgentProviderStatus | null>(null);
-  const [providerDraft, setProviderDraft] = useState({
-    provider: "nous",
-    model: "stepfun/step-3.7-flash:free",
-  });
-  const [providerBusy, setProviderBusy] = useState(false);
+const [setupMessage, setSetupMessage] = useState("");
   const messagesEnd = useRef<HTMLDivElement>(null);
-  const settingsWasOpen = useRef(false);
   const channel = useMemo(() => new BroadcastChannel("papers-agent"), []);
 
   useEffect(() => {
@@ -198,83 +191,7 @@ export function App() {
     void papers.listChanges().then(setChanges).catch(() => undefined);
   }, []);
 
-  const loadProviderStatus = useCallback(async () => {
-    const status = await papers.agentProviderStatus();
-    setProviderStatus(status);
-    setProviderDraft({
-      provider: status.provider || "nous",
-      model: status.model || "stepfun/step-3.7-flash:free",
-    });
-    setSetupMessage(status.message);
-    return status;
-  }, []);
-
-  useEffect(() => {
-    if (settingsOpen && !settingsWasOpen.current) {
-      void loadProviderStatus().catch((reason) => {
-        agent.setError(reason instanceof Error ? reason.message : String(reason));
-      });
-    }
-    settingsWasOpen.current = settingsOpen;
-  }, [loadProviderStatus, settingsOpen]);
-
-  const saveProviderSettings = useCallback(async () => {
-    setProviderBusy(true);
-    try {
-      const status = await papers.setAgentProvider(
-        providerDraft.provider,
-        providerDraft.model,
-      );
-      setProviderStatus(status);
-      setProviderDraft({
-        provider: status.provider,
-        model: status.model,
-      });
-      setSetupMessage(status.message);
-    } catch (reason) {
-      agent.setError(reason instanceof Error ? reason.message : String(reason));
-    } finally {
-      setProviderBusy(false);
-    }
-  }, [agent, providerDraft]);
-
-  const reconnectProvider = useCallback(async () => {
-    setProviderBusy(true);
-    try {
-      setSetupMessage(await papers.startProviderLogin(providerDraft.provider));
-      await loadProviderStatus();
-    } catch (reason) {
-      agent.setError(reason instanceof Error ? reason.message : String(reason));
-    } finally {
-      setProviderBusy(false);
-    }
-  }, [agent, loadProviderStatus, providerDraft.provider]);
-
-  const validateProviderSettings = useCallback(async () => {
-    setProviderBusy(true);
-    try {
-      const status = await papers.validateAgentProvider();
-      setProviderStatus(status);
-      setSetupMessage(status.message);
-    } catch (reason) {
-      agent.setError(reason instanceof Error ? reason.message : String(reason));
-    } finally {
-      setProviderBusy(false);
-    }
-  }, [agent]);
-
-  const testProviderSettings = useCallback(async () => {
-    if (!agent.ready) {
-      agent.setError("Start Hermes before running a live model test.");
-      return;
-    }
-    await agent.send(
-      "Provider health check: reply with exactly `PAPERS_PROVIDER_TEST_OK`, then stop.",
-      { title: "Provider test" },
-    );
-  }, [agent]);
-
-  useEffect(() => {
+useEffect(() => {
     if (!inspectMode) {
       document.documentElement.classList.remove("is-inspecting");
       return;
@@ -392,21 +309,8 @@ export function App() {
     });
   }, [agent, selection, selectionPrompt]);
 
-  const connectAction = agent.runtime?.installed ? agent.start : agent.install;
+const connectAction = agent.runtime?.installed ? agent.start : agent.install;
   const isWorking = agent.runState === "planning" || agent.runState === "acting";
-  const providerDirty =
-    !providerStatus ||
-    providerDraft.provider !== providerStatus.provider ||
-    providerDraft.model !== providerStatus.model;
-  const providerNeedsHermesSetup =
-    providerDirty && !["auto", "nous"].includes(providerDraft.provider);
-  const providerModelLabel = providerDraft.model || "choose a model";
-  const providerStatusMessage = providerDirty
-    ? providerNeedsHermesSetup
-      ? `${providerDraft.provider} is selected, but Papers cannot sign into it yet. Set it up in Hermes first, then enter the exact model name and save.`
-      : `Unsaved: click Save provider to switch Hermes to ${providerDraft.provider} / ${providerModelLabel}.`
-    : providerStatus?.message || setupMessage;
-  const providerLoginSupported = ["auto", "nous"].includes(providerDraft.provider);
 
   return (
     <div
@@ -490,15 +394,8 @@ export function App() {
           <button
             className="basic-row"
             disabled={!agent.runtime?.installed}
-            onClick={async () => {
-              try {
-                setSettingsOpen(true);
-                await loadProviderStatus();
-              } catch (reason) {
-                agent.setError(
-                  reason instanceof Error ? reason.message : String(reason),
-                );
-              }
+onClick={async () => {
+              setSettingsOpen(true);
             }}
           >
             <Settings size={18} />
@@ -515,158 +412,12 @@ export function App() {
         </div>
       )}
 
-      {settingsOpen && (
-        <section className="settings-panel" role="dialog" aria-modal="true">
-          <div className="settings-header">
-            <div>
-              <p className="eyebrow">Settings</p>
-              <h2>Agent provider</h2>
-            </div>
-            <button onClick={() => setSettingsOpen(false)} aria-label="Close settings">
-              <X size={16} />
-            </button>
-          </div>
-          <p className="settings-copy">
-            Papers changes Hermes&apos; private config only. Credentials stay with
-            Hermes; this screen never shows API keys or OAuth tokens.
-          </p>
-          <div className="settings-grid">
-            <label>
-              <span>Provider</span>
-              <select
-                value={providerDraft.provider}
-                onChange={(event) => {
-                  const provider = event.target.value;
-                  const model =
-                    provider === providerStatus?.provider
-                      ? providerStatus.model
-                      : ["auto", "nous"].includes(provider)
-                        ? "stepfun/step-3.7-flash:free"
-                        : "";
-                  setProviderDraft((current) => ({
-                    ...current,
-                    provider,
-                    model,
-                  }));
-                  setSetupMessage(
-                    ["auto", "nous"].includes(provider)
-                      ? `Selected ${provider}. Save provider to make Hermes use it.`
-                      : `Selected ${provider}. Papers does not manage that login yet; set it up in Hermes and enter its model name.`,
-                  );
-                }}
-              >
-                {(providerStatus?.known_providers ?? ["nous", "openrouter", "auto"]).map(
-                  (provider) => (
-                    <option value={provider} key={provider}>
-                      {provider}
-                    </option>
-                  ),
-                )}
-              </select>
-            </label>
-            <label>
-              <span>Model</span>
-              <input
-                list="papers-model-suggestions"
-                value={providerDraft.model}
-                onChange={(event) => {
-                  const model = event.target.value;
-                  setProviderDraft((current) => ({
-                    ...current,
-                    model,
-                  }));
-                  setSetupMessage(
-                    `Selected ${model}. Save provider to make Hermes use it.`,
-                  );
-                }}
-                placeholder="provider/model or model id"
-              />
-              <datalist id="papers-model-suggestions">
-                {(providerStatus?.suggested_models ?? [
-                  "stepfun/step-3.7-flash:free",
-                ]).map((model) => (
-                  <option value={model} key={model} />
-                ))}
-              </datalist>
-            </label>
-          </div>
-          <div className={`provider-status-card ${providerDirty ? "unsaved" : ""}`}>
-            <strong>
-              {providerDraft.provider} / {providerModelLabel}
-            </strong>
-            <small>{providerStatusMessage}</small>
-            <div>
-              <span>
-                Auth:{" "}
-                {providerDirty
-                  ? providerNeedsHermesSetup
-                    ? "setup needed"
-                    : "not checked until saved"
-                  : providerStatus?.authenticated
-                  ? "verified"
-                  : providerStatus?.auth_provider
-                    ? `signed in as ${providerStatus.auth_provider}`
-                    : "not verified"}
-              </span>
-              <span>
-                Hermes: {providerStatus?.runtime_ready ? "ready" : "not ready"}
-              </span>
-              {providerDirty && <span>Draft not saved</span>}
-              {providerStatus && (
-                <span>
-                  Saved: {providerStatus.provider} / {providerStatus.model}
-                </span>
-              )}
-            </div>
-          </div>
-          <div className="settings-actions">
-            <button
-              className="secondary"
-              onClick={() => void reconnectProvider()}
-              disabled={providerBusy || providerDirty || !providerLoginSupported}
-              title={
-                providerDirty
-                  ? "Save the provider first"
-                  : providerLoginSupported
-                    ? "Open provider sign-in"
-                    : "Papers only opens Nous sign-in today"
-              }
-            >
-              {providerLoginSupported ? "Sign in / reconnect" : "Hermes setup needed"}
-            </button>
-            <button
-              className="secondary"
-              onClick={() => void validateProviderSettings()}
-              disabled={providerBusy || providerDirty}
-              title={providerDirty ? "Save the provider before validating" : "Validate config"}
-            >
-              Validate
-            </button>
-            <button
-              className="secondary"
-              onClick={() => void testProviderSettings()}
-              disabled={providerBusy || !agent.ready || providerDirty}
-              title={providerDirty ? "Save the provider before testing" : "Run a live prompt"}
-            >
-              Test model
-            </button>
-            <button
-              className="primary"
-              onClick={() => void saveProviderSettings()}
-              disabled={providerBusy || !providerDraft.model.trim()}
-              title={
-                providerDraft.model.trim()
-                  ? "Save provider and model"
-                  : "Enter a model before saving"
-              }
-            >
-              Save provider
-            </button>
-          </div>
-          <p className="settings-footnote">
-            Hotkey settings are next. Current companion toggle: Ctrl+Alt+Q.
-          </p>
-        </section>
+{settingsOpen && (
+        <SettingsWizard
+          agent={agent}
+          onClose={() => setSettingsOpen(false)}
+          onSetupMessage={setSetupMessage}
+        />
       )}
 
       <aside className={`session-rail ${sessionRailOpen ? "" : "collapsed"}`}>
