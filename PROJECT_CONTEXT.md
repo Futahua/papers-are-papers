@@ -445,6 +445,15 @@ The immediate interface target is a workbench-style agent UI:
 - Exact approval cards for consequential actions.
 - Self-edit cards that make Build, Experience, Keep, Reject, and Rollback obvious.
 
+The Work rail is a permanent Papers shell pattern, not a Backpack-specific invention. Future Backpacks may contribute domain-specific work cards, filters, or artifact types, but they should not replace the rail or invent separate agent-progress surfaces.
+
+Work rail persistence should be scoped rather than global clutter:
+
+- Current run items stay visible while the agent is working.
+- Completed work items remain attached to the conversation, change record, or Backpack session that produced them.
+- Switching Backpacks should show the relevant work history for that Backpack/session while keeping the same global Work rail shape.
+- The global AI can still reference broader context when allowed; the rail should not accidentally imply that the agent is trapped inside one Backpack.
+
 This is intentionally narrower than the older Assistant project's larger language around observability, collaboration, and autonomous research. Those ideas remain historical context only. Papers should first become pleasant and reliable for ordinary agent work.
 
 ## Decision status language

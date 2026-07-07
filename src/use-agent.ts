@@ -44,6 +44,47 @@ const shortJson = (value: unknown, limit = 360) => {
     typeof value === "string" ? value : JSON.stringify(value, null, 2);
   return text.length > limit ? `${text.slice(0, limit).trim()}…` : text;
 };
+const readableToolName = (name: string) =>
+  name
+    .replace(/[_-]+/g, " ")
+    .replace(/\bterminal\b/i, "Command")
+    .replace(/\bstdout\b/i, "output")
+    .trim();
+const toolDetail = (payload: Record<string, unknown>) => {
+  if (typeof payload.description === "string" && payload.description.trim()) {
+    return payload.description;
+  }
+  if (typeof payload.message === "string" && payload.message.trim()) {
+    return payload.message;
+  }
+
+  const result = payload.result;
+  if (result && typeof result === "object" && !Array.isArray(result)) {
+    const record = result as Record<string, unknown>;
+    if (record.exit_code === 0 || record.ok === true || record.success === true) {
+      return "Finished successfully.";
+    }
+    if (typeof record.error === "string" && record.error.trim()) {
+      return record.error;
+    }
+    if (typeof record.output === "string" && record.output.trim()) {
+      const firstLine = record.output.trim().split(/\r?\n/)[0];
+      return firstLine.length > 120 ? `${firstLine.slice(0, 120).trim()}…` : firstLine;
+    }
+  }
+
+  return "Finished.";
+};
+const artifactDetail = (payload: Record<string, unknown>) => {
+  const value =
+    payload.diff ??
+    payload.path ??
+    payload.file ??
+    payload.screenshot ??
+    payload.preview ??
+    payload.url;
+  return value == null ? "" : shortJson(value);
+};
 
 export function useAgent() {
   const [runtime, setRuntime] = useState<BootstrapStatus | null>(null);
@@ -209,7 +250,9 @@ export function useAgent() {
         case "tool.generating": {
           void persistState("acting");
           const name =
-            typeof payload.name === "string" ? payload.name : "Working";
+            typeof payload.name === "string"
+              ? readableToolName(payload.name)
+              : "Working";
           const detail =
             typeof payload.description === "string"
               ? payload.description
@@ -220,19 +263,22 @@ export function useAgent() {
         }
         case "tool.complete": {
           const name =
-            typeof payload.name === "string" ? payload.name : "Action";
+            typeof payload.name === "string"
+              ? readableToolName(payload.name)
+              : "Action";
+          const artifact = artifactDetail(payload);
           addActivity("tool", `${name} completed`, undefined, "done");
           addWorkItem(
             "tool_step",
             `${name} completed`,
-            shortJson(payload.result ?? payload.message ?? payload.args),
+            toolDetail(payload),
             "done",
           );
-          if (payload.result || payload.diff || payload.path || payload.file) {
+          if (artifact) {
             addWorkItem(
               "artifact",
               `${name} output`,
-              shortJson(payload.result ?? payload.diff ?? payload.path ?? payload.file),
+              artifact,
               "done",
             );
           }

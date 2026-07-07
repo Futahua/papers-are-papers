@@ -569,13 +569,45 @@ input:focus-visible {
 }
 
 .message-body {
-  white-space: pre-wrap;
+  white-space: normal;
   font-size: 13px;
   line-height: 1.7;
 }
 
 .message.user .message-body {
   font-weight: 560;
+}
+
+.markdown-text {
+  display: grid;
+  gap: 12px;
+}
+
+.markdown-text p,
+.markdown-text ul {
+  margin: 0;
+}
+
+.markdown-text ul {
+  display: grid;
+  gap: 9px;
+  padding-left: 18px;
+}
+
+.markdown-text li {
+  padding-left: 3px;
+}
+
+.markdown-text strong {
+  font-weight: 720;
+}
+
+.markdown-text code {
+  padding: 2px 5px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: rgba(32, 32, 30, 0.05);
+  font: 10px var(--mono);
 }
 
 .typing {

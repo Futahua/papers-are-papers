@@ -29,6 +29,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ReactNode,
 } from "react";
 import { inspectElement } from "./inspect";
 import { papers } from "./papers";
@@ -46,6 +47,94 @@ const stateCopy: Record<string, string> = {
   cancelled: "Stopped",
   failed: "Needs attention",
 };
+
+const renderInlineMarkdown = (text: string): ReactNode[] => {
+  const pieces: ReactNode[] = [];
+  const pattern = /(\*\*[^*]+?\*\*|`[^`]+?`)/g;
+  let cursor = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = pattern.exec(text)) !== null) {
+    if (match.index > cursor) {
+      pieces.push(text.slice(cursor, match.index));
+    }
+
+    const token = match[0];
+    const key = `${match.index}-${token}`;
+    if (token.startsWith("**")) {
+      pieces.push(<strong key={key}>{token.slice(2, -2)}</strong>);
+    } else {
+      pieces.push(<code key={key}>{token.slice(1, -1)}</code>);
+    }
+    cursor = match.index + token.length;
+  }
+
+  if (cursor < text.length) {
+    pieces.push(text.slice(cursor));
+  }
+
+  return pieces;
+};
+
+function MarkdownText({ text }: { text: string }) {
+  const blocks: Array<
+    | { kind: "paragraph"; text: string }
+    | { kind: "list"; items: string[] }
+  > = [];
+  let paragraph: string[] = [];
+  let list: string[] = [];
+
+  const flushParagraph = () => {
+    if (paragraph.length > 0) {
+      blocks.push({ kind: "paragraph", text: paragraph.join(" ") });
+      paragraph = [];
+    }
+  };
+
+  const flushList = () => {
+    if (list.length > 0) {
+      blocks.push({ kind: "list", items: list });
+      list = [];
+    }
+  };
+
+  text.split(/\r?\n/).forEach((line) => {
+    const bullet = line.match(/^\s*[-*]\s+(.+)$/);
+    if (bullet) {
+      flushParagraph();
+      list.push(bullet[1]);
+      return;
+    }
+
+    if (!line.trim()) {
+      flushParagraph();
+      flushList();
+      return;
+    }
+
+    flushList();
+    paragraph.push(line.trim());
+  });
+
+  flushParagraph();
+  flushList();
+
+  return (
+    <div className="markdown-text">
+      {blocks.map((block, index) =>
+        block.kind === "list" ? (
+          <ul key={index}>
+            {block.items.map((item, itemIndex) => (
+              <li key={itemIndex}>{renderInlineMarkdown(item)}</li>
+            ))}
+          </ul>
+        ) : (
+          <p key={index}>{renderInlineMarkdown(block.text)}</p>
+        ),
+      )}
+    </div>
+  );
+}
 
 export function App() {
   const agent = useAgent();
@@ -394,14 +483,15 @@ export function App() {
                   {message.role === "user" ? "You" : "Papers"}
                 </div>
                 <div className="message-body">
-                  {message.text ||
-                    (message.pending ? (
+                  {message.text ? (
+                    <MarkdownText text={message.text} />
+                  ) : message.pending ? (
                       <span className="typing">
                         <i />
                         <i />
                         <i />
                       </span>
-                    ) : null)}
+                    ) : null}
                 </div>
               </article>
             ))}
