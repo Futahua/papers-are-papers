@@ -24,21 +24,8 @@ echo Closing any running Papers app process...
 powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -Command "Get-Process -Name papers -ErrorAction SilentlyContinue | ForEach-Object { $pidToStop=$_.Id; try { Stop-Process -Id $pidToStop -Force -ErrorAction Stop } catch { Write-Host ('Could not stop papers.exe PID ' + $pidToStop + ': ' + $_.Exception.Message) } }"
 echo.
 
-if exist "%PAPERS_EXE%" (
-  powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -Command "$root=$env:PAPERS_REAL; $exe=$env:PAPERS_EXE; $exeTime=(Get-Item -LiteralPath $exe).LastWriteTimeUtc; $paths=@('src','src-tauri\src','src-tauri\tauri.conf.json','package.json','package-lock.json','vite.config.ts','tsconfig.json'); foreach ($relative in $paths) { $path=Join-Path $root $relative; if (Test-Path -LiteralPath $path -PathType Leaf) { if ((Get-Item -LiteralPath $path).LastWriteTimeUtc -gt $exeTime) { exit 1 } } elseif (Test-Path -LiteralPath $path -PathType Container) { if (Get-ChildItem -LiteralPath $path -Recurse -File | Where-Object { $_.LastWriteTimeUtc -gt $exeTime } | Select-Object -First 1) { exit 1 } } }; exit 0"
-  if "%ERRORLEVEL%"=="0" (
-    echo Starting existing REAL build...
-    start "" "%PAPERS_EXE%"
-    exit /b 0
-  )
-  echo Source files changed after the release exe was built.
-  echo Rebuilding Papers from REAL now.
-  echo.
-) else (
-  echo No REAL release build was found yet.
-  echo Building Papers from REAL now. This can take a minute.
-  echo.
-)
+echo Rebuilding Papers from REAL now. This can take a minute.
+echo.
 
 pushd "%PAPERS_REAL%"
 call npm.cmd run tauri -- build --no-bundle
