@@ -57,6 +57,22 @@ export interface ActivityItem {
   createdAt: number;
 }
 
+export interface WorkItem {
+  id: string;
+  type:
+    | "reasoning_summary"
+    | "tool_step"
+    | "artifact"
+    | "approval"
+    | "change"
+    | "status";
+  title: string;
+  detail?: string;
+  state?: "running" | "done" | "failed" | "waiting";
+  metadata?: Record<string, string | number | boolean>;
+  createdAt: number;
+}
+
 export interface ApprovalRequest {
   sessionId?: string;
   command: string;

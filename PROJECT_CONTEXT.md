@@ -186,6 +186,8 @@ These principles should be treated as stronger than individual features unless t
 
 **Confirmed decision:** the first priority is a solid global AI operator and inline editor. The creator intends to rely on that agent to create and revise future Backpacks through experience-driven requests rather than requiring a human or coding agent to pre-design every Backpack.
 
+**Confirmed correction:** the near-term product should feel like a practical agent workbench, closer to Codex or Claude Code than to a broad observability dashboard. Do not prioritize multi-agent collaboration, grand research automation, or a full "living organism" interface now. The mundane UX matters first: streaming answers, concise public reasoning summaries, visible tool steps, files/artifacts, diffs, approvals, and self-edit previews.
+
 **Deferred:** the first generated Backpack is still expected to be a knowledge-management, second-brain, or Life OS Backpack once the agent foundation has earned enough trust.
 
 The first Life OS Backpack should eventually help the creator:
@@ -334,7 +336,8 @@ The presence of React, HTML, and CSS inside Tauri does not make this a website. 
 ### What the current app honestly does
 
 - Opens a real desktop window.
-- Presents the Agent-first main workspace with conversations, live activity, approvals, clarification prompts, and a global Ask composer.
+- Presents the Agent-first main workspace with conversations, a Work rail, approvals, clarification prompts, and a global Ask composer.
+- Separates normal chat messages from public work items: reasoning summaries, tool steps, artifacts, approvals, and self-edit candidates.
 - Truthfully shows whether Hermes is absent, stopped, starting, ready, or failed.
 - Can download only the pinned official Hermes installer, verify its SHA-256 hash, and install it into Papers' private application-data directory.
 - Can start and stop `hermes serve` on a random loopback-only port. The native host owns the authenticated WebSocket and forwards frames to React through Tauri events.
@@ -391,6 +394,7 @@ What is directionally correct:
 What still needs to be designed:
 
 - Backpack contract and lifecycle.
+- Practical Work rail polish for files, screenshots, diffs, previews, and generated artifacts.
 - Tool registry and lifecycle.
 - Data Source contract.
 - The final operator-tool contract for whole-PC work.
@@ -428,6 +432,20 @@ Exercise the Agent-first vertical slice with the creator:
 7. If kept, verify the canonical `REAL` commit, GitHub push, version activation, and rollback.
 
 Failures found during this exercise should harden the permanent Agent contract before Backpacks are generated.
+
+## Practical agent workbench direction
+
+The immediate interface target is a workbench-style agent UI:
+
+- Conversation in the center.
+- Work rail on the side.
+- Short public reasoning summaries, never private chain-of-thought.
+- Tool/action cards with understandable status.
+- First-class file, screenshot, diff, preview, and generated-content artifacts.
+- Exact approval cards for consequential actions.
+- Self-edit cards that make Build, Experience, Keep, Reject, and Rollback obvious.
+
+This is intentionally narrower than the older Assistant project's larger language around observability, collaboration, and autonomous research. Those ideas remain historical context only. Papers should first become pleasant and reliable for ordinary agent work.
 
 ## Decision status language
 
@@ -685,3 +703,7 @@ The latest release build and automated checks pass. The release launches and rea
 During the first app-bridge proof, Hermes emitted reasoning/thinking events and a `reasoning` field inside `message.complete`; Papers initially stored them in SQLite. This violated the rule that Papers must not reveal or store private chain-of-thought. The native storage layer now drops private reasoning/thinking event types and recursively removes private reasoning fields before persistence. The already-captured local database records were scrubbed. Tests verify this behavior.
 
 A harmless inspect-only Computer Use pass against Notepad succeeded and did not edit anything. Notepad restored existing creator tabs rather than a blank scratch file, so the mutation test used an explicitly prepared disposable scratch file in `%TEMP%`. Hermes selected the scratch tab, typed `PAPERS_TYPED_OK`, and did not save; a visual screenshot confirmed the marker was present while the disk file remained unchanged. The unintended elevated Cua scheduled task created by the superseded installer path was not present on the latest check, but future agents should re-check before any real experience test.
+
+### 2026-07-07 - Practical workbench UI direction confirmed
+
+After reviewing the creator's older Assistant project and several agent references, the creator clarified that the near-term need is not observability, agent collaboration, or broad research automation. The desired near-term feel is a practical Codex/Claude-Code-like workbench: clear streaming, safe public reasoning summaries, files/artifacts, diffs, approvals, and self-edit previews. Papers now treats the right-side rail as a Work rail and begins separating chat from work items.

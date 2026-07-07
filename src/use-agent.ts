@@ -11,6 +11,7 @@ import type {
   InspectSelection,
   PapersSession,
   RunState,
+  WorkItem,
 } from "./types";
 
 interface SessionCreateResponse {
@@ -37,6 +38,12 @@ const payloadText = (payload: Record<string, unknown> | undefined) => {
   const value = payload?.text ?? payload?.rendered ?? payload?.message;
   return typeof value === "string" ? value : "";
 };
+const shortJson = (value: unknown, limit = 360) => {
+  if (value == null) return "";
+  const text =
+    typeof value === "string" ? value : JSON.stringify(value, null, 2);
+  return text.length > limit ? `${text.slice(0, limit).trim()}…` : text;
+};
 
 export function useAgent() {
   const [runtime, setRuntime] = useState<BootstrapStatus | null>(null);
@@ -47,6 +54,7 @@ export function useAgent() {
   const [hermesSessionId, setHermesSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [activities, setActivities] = useState<ActivityItem[]>([]);
+  const [workItems, setWorkItems] = useState<WorkItem[]>([]);
   const [approval, setApproval] = useState<ApprovalRequest | null>(null);
   const [clarify, setClarify] = useState<ClarifyRequest | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -88,6 +96,32 @@ export function useAgent() {
     [],
   );
 
+  const addWorkItem = useCallback(
+    (
+      type: WorkItem["type"],
+      title: string,
+      detail?: string,
+      state?: WorkItem["state"],
+      metadata?: WorkItem["metadata"],
+    ) => {
+      setWorkItems((current) =>
+        [
+          {
+            id: newId(),
+            type,
+            title,
+            detail,
+            state,
+            metadata,
+            createdAt: Date.now(),
+          },
+          ...current,
+        ].slice(0, 80),
+      );
+    },
+    [],
+  );
+
   const persistState = useCallback(async (state: RunState) => {
     setRunState(state);
     const session = activeSessionRef.current;
@@ -112,9 +146,16 @@ export function useAgent() {
       switch (event.type) {
         case "gateway.ready":
           addActivity("status", "Hermes is ready", "The local agent channel is live.", "done");
+          addWorkItem("status", "Agent channel ready", "Hermes is connected through Papers.", "done");
           break;
         case "message.start": {
           void persistState("planning");
+          addWorkItem(
+            "reasoning_summary",
+            "Understanding the request",
+            "Papers is asking Hermes to plan the next safe step.",
+            "running",
+          );
           const id = newId();
           assistantMessageId.current = id;
           setMessages((current) => [
@@ -155,6 +196,12 @@ export function useAgent() {
           assistantMessageId.current = null;
           void persistState("completed");
           addActivity("result", "Finished", "The agent completed this turn.", "done");
+          addWorkItem(
+            "reasoning_summary",
+            "Turn completed",
+            "The visible response finished streaming.",
+            "done",
+          );
           break;
         }
         case "tool.start":
@@ -168,12 +215,27 @@ export function useAgent() {
               ? payload.description
               : undefined;
           addActivity("tool", name, detail, "running");
+          addWorkItem("tool_step", name, detail || "Tool is running.", "running");
           break;
         }
         case "tool.complete": {
           const name =
             typeof payload.name === "string" ? payload.name : "Action";
           addActivity("tool", `${name} completed`, undefined, "done");
+          addWorkItem(
+            "tool_step",
+            `${name} completed`,
+            shortJson(payload.result ?? payload.message ?? payload.args),
+            "done",
+          );
+          if (payload.result || payload.diff || payload.path || payload.file) {
+            addWorkItem(
+              "artifact",
+              `${name} output`,
+              shortJson(payload.result ?? payload.diff ?? payload.path ?? payload.file),
+              "done",
+            );
+          }
           break;
         }
         case "approval.request": {
@@ -194,6 +256,12 @@ export function useAgent() {
             risk: "high",
           });
           addActivity("warning", "Approval needed", command || description);
+          addWorkItem(
+            "approval",
+            "Approval needed",
+            command || description,
+            "waiting",
+          );
           break;
         }
         case "clarify.request": {
@@ -222,13 +290,14 @@ export function useAgent() {
           setError(message);
           void persistState("failed");
           addActivity("error", "Agent error", message, "failed");
+          addWorkItem("status", "Agent error", message, "failed");
           break;
         }
         default:
           break;
       }
     },
-    [addActivity, persistState],
+    [addActivity, addWorkItem, persistState],
   );
 
   useEffect(() => {
@@ -469,6 +538,7 @@ export function useAgent() {
     hermesSessionRef.current = null;
     setMessages([]);
     setActivities([]);
+    setWorkItems([]);
     setApproval(null);
     setClarify(null);
     setRunState("idle");
@@ -492,6 +562,7 @@ export function useAgent() {
       setHermesSessionId(resumed.session_id);
       setRunState(session.state);
       setActivities([]);
+      setWorkItems([]);
       setMessages(
         (resumed.messages ?? [])
           .filter(
@@ -542,6 +613,7 @@ export function useAgent() {
     activeSession,
     messages,
     activities,
+    workItems,
     approval,
     clarify,
     error,

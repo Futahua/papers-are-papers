@@ -558,13 +558,13 @@ export function App() {
         </form>
       </main>
 
-      <aside className={`activity-rail ${activityOpen ? "" : "collapsed"}`}>
+      <aside className={`activity-rail work-rail ${activityOpen ? "" : "collapsed"}`}>
         <button
           className="activity-toggle"
           onClick={() => setActivityOpen((open) => !open)}
         >
           <Activity size={16} />
-          <span>Activity</span>
+          <span>Work</span>
           <ChevronDown size={14} />
         </button>
         {activityOpen && (
@@ -578,13 +578,29 @@ export function App() {
                 <small>{agent.statusLabel}</small>
               </div>
             </div>
-            <div className="activity-list">
-              {agent.activities.length === 0 ? (
+            <div className="work-section">
+              <p className="eyebrow">Now</p>
+              {agent.workItems.length === 0 ? (
                 <p className="activity-empty">
-                  Actions, checks, and approvals will remain visible here.
+                  Reasoning summaries, tool steps, files, diffs, and approvals will appear here.
                 </p>
               ) : (
-                agent.activities.map((item) => (
+                agent.workItems.slice(0, 10).map((item) => (
+                  <div className={`activity-item work-item ${item.type}`} key={item.id}>
+                    <span className="activity-dot" />
+                    <div>
+                      <strong>{item.title}</strong>
+                      {item.detail && <small>{item.detail}</small>}
+                      <em>{item.type.replaceAll("_", " ")}</em>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+            {agent.activities.length > 0 && (
+              <div className="work-section compact">
+                <p className="eyebrow">Timeline</p>
+                {agent.activities.slice(0, 6).map((item) => (
                   <div className={`activity-item ${item.kind}`} key={item.id}>
                     <span className="activity-dot" />
                     <div>
@@ -592,11 +608,11 @@ export function App() {
                       {item.detail && <small>{item.detail}</small>}
                     </div>
                   </div>
-                ))
-              )}
-            </div>
+                ))}
+              </div>
+            )}
             {changes.length > 0 && (
-              <div className="change-list">
+              <div className="change-list work-section">
                 <p className="eyebrow">Self-edits</p>
                 {changes.slice(0, 3).map((change) => (
                   <div className="change-item" key={change.id}>
