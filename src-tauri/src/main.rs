@@ -128,6 +128,20 @@ fn create_session(
 }
 
 #[tauri::command]
+fn rename_session(
+    state: State<'_, AppState>,
+    id: String,
+    title: String,
+) -> Result<PapersSession, String> {
+    state.database.rename_session(&id, &title)
+}
+
+#[tauri::command]
+fn delete_session(state: State<'_, AppState>, id: String) -> Result<(), String> {
+    state.database.delete_session(&id)
+}
+
+#[tauri::command]
 fn bind_hermes_session(
     state: State<'_, AppState>,
     id: String,
@@ -280,6 +294,8 @@ fn main() {
             foreground_app,
             list_sessions,
             create_session,
+            rename_session,
+            delete_session,
             bind_hermes_session,
             update_session_state,
             record_agent_event,

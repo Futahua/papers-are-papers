@@ -30,6 +30,8 @@ interface SendOptions {
   cwd?: string;
   selection?: InspectSelection;
   changeId?: string;
+  context?: string;
+  title?: string;
 }
 
 const gateway = new HermesGateway();
@@ -448,7 +450,10 @@ export function useAgent() {
       const mode = options.mode ?? "operator";
 
       if (!localSession || localSession.mode !== mode) {
-        localSession = await papers.createSession(text.slice(0, 70), mode);
+        localSession = await papers.createSession(
+          (options.title ?? text).slice(0, 70),
+          mode,
+        );
         activeSessionRef.current = localSession;
         setActiveSession(localSession);
         setSessions((current) => [localSession!, ...current]);
@@ -461,7 +466,7 @@ export function useAgent() {
           {
             cols: 96,
             source: mode === "builder" ? "papers-builder" : "papers",
-            title: text.slice(0, 70),
+            title: (options.title ?? text).slice(0, 70),
             ...(options.cwd ? { cwd: options.cwd } : {}),
             ...(mode === "builder" ? { profile: "papers-builder" } : {}),
           },
@@ -485,7 +490,7 @@ export function useAgent() {
         );
       }
 
-      let prompt = text;
+      let prompt = options.context ? `${options.context}\n\n${text}` : text;
       if (options.selection) {
         prompt = [
           "You are changing Papers itself in its isolated staging worktree.",
@@ -508,6 +513,41 @@ export function useAgent() {
       );
     },
     [persistState],
+  );
+
+  const renameSession = useCallback(
+    async (session: PapersSession, title: string) => {
+      const updated = await papers.renameSession(session.id, title);
+      setSessions((current) =>
+        current.map((item) => (item.id === updated.id ? updated : item)),
+      );
+      if (activeSessionRef.current?.id === updated.id) {
+        activeSessionRef.current = updated;
+        setActiveSession(updated);
+      }
+    },
+    [],
+  );
+
+  const deleteSession = useCallback(
+    async (session: PapersSession) => {
+      await papers.deleteSession(session.id);
+      setSessions((current) => current.filter((item) => item.id !== session.id));
+      if (activeSessionRef.current?.id === session.id) {
+        setActiveSession(null);
+        setHermesSessionId(null);
+        activeSessionRef.current = null;
+        hermesSessionRef.current = null;
+        setMessages([]);
+        setActivities([]);
+        setWorkItems([]);
+        setApproval(null);
+        setClarify(null);
+        setRunState("idle");
+        setError(null);
+      }
+    },
+    [],
   );
 
   const stop = useCallback(async () => {
@@ -673,6 +713,8 @@ export function useAgent() {
     answerClarify,
     newConversation,
     openSession,
+    renameSession,
+    deleteSession,
     setError,
   };
 }

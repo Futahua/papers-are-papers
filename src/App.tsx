@@ -11,7 +11,10 @@ import {
   LoaderCircle,
   Menu,
   MessageSquareText,
+  PanelLeftClose,
+  PanelLeftOpen,
   Pause,
+  Pencil,
   Play,
   Plus,
   RotateCcw,
@@ -19,6 +22,7 @@ import {
   ShieldCheck,
   Sparkles,
   Square,
+  Trash2,
   Wrench,
   X,
 } from "lucide-react";
@@ -140,6 +144,7 @@ export function App() {
   const agent = useAgent();
   const [draft, setDraft] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
+  const [sessionRailOpen, setSessionRailOpen] = useState(true);
   const [activityOpen, setActivityOpen] = useState(true);
   const [inspectMode, setInspectMode] = useState(false);
   const [selection, setSelection] = useState<InspectSelection | null>(null);
@@ -168,9 +173,9 @@ export function App() {
       if (type === "stop") void agent.stop();
       if (type === "new") agent.newConversation();
       if (type === "quickPrompt" && typeof event.data.prompt === "string") {
-        void agent.send(
-          `The user invoked Papers while working with ${event.data.target || foreground}.\n\n${event.data.prompt}`,
-        );
+        void agent.send(event.data.prompt, {
+          context: `The user invoked Papers while working with ${event.data.target || foreground}.`,
+        });
       }
     };
   }, [agent, channel, foreground]);
@@ -237,11 +242,48 @@ export function App() {
       const text = draft;
       setDraft("");
       await papers.showCompanion().catch(() => undefined);
-      await agent.send(
-        `The user is currently working with ${foreground}.\n\n${text}`,
-      );
+      await agent.send(text, {
+        context: `The user is currently working with ${foreground}.`,
+      });
     },
     [agent, draft, foreground],
+  );
+
+  const renameConversation = useCallback(
+    async (sessionId: string, currentTitle: string) => {
+      const title = window.prompt("Rename this conversation", currentTitle);
+      if (title == null || title.trim() === currentTitle.trim()) {
+        return;
+      }
+      const session = agent.sessions.find((item) => item.id === sessionId);
+      if (!session) {
+        return;
+      }
+      try {
+        await agent.renameSession(session, title);
+      } catch (reason) {
+        agent.setError(reason instanceof Error ? reason.message : String(reason));
+      }
+    },
+    [agent],
+  );
+
+  const deleteConversation = useCallback(
+    async (sessionId: string, title: string) => {
+      const session = agent.sessions.find((item) => item.id === sessionId);
+      if (!session) {
+        return;
+      }
+      if (!window.confirm(`Delete "${title}" from Papers history?`)) {
+        return;
+      }
+      try {
+        await agent.deleteSession(session);
+      } catch (reason) {
+        agent.setError(reason instanceof Error ? reason.message : String(reason));
+      }
+    },
+    [agent],
   );
 
   const submitInspect = useCallback(async () => {
@@ -270,16 +312,34 @@ export function App() {
   const isWorking = agent.runState === "planning" || agent.runState === "acting";
 
   return (
-    <div className="app-frame">
+    <div
+      className={`app-frame ${sessionRailOpen ? "" : "sessions-collapsed"} ${
+        activityOpen ? "" : "work-collapsed"
+      }`}
+    >
       <header className="topbar">
-        <button
-          className="pill-button"
-          onClick={() => setMenuOpen((open) => !open)}
-          aria-expanded={menuOpen}
-        >
-          <Menu size={16} />
-          <span>Basic</span>
-        </button>
+        <div className="topbar-left">
+          <button
+            className="pill-button"
+            onClick={() => setMenuOpen((open) => !open)}
+            aria-expanded={menuOpen}
+          >
+            <Menu size={16} />
+            <span>Basic</span>
+          </button>
+          <button
+            className="pill-button icon-pill"
+            onClick={() => setSessionRailOpen((open) => !open)}
+            title={sessionRailOpen ? "Hide chat history" : "Show chat history"}
+          >
+            {sessionRailOpen ? (
+              <PanelLeftClose size={16} />
+            ) : (
+              <PanelLeftOpen size={16} />
+            )}
+            <span>History</span>
+          </button>
+        </div>
 
         <div className="wordmark">
           <span>Papers</span>
@@ -357,33 +417,54 @@ export function App() {
         </div>
       )}
 
-      <aside className="session-rail">
+      <aside className={`session-rail ${sessionRailOpen ? "" : "collapsed"}`}>
         <button className="new-thread" onClick={agent.newConversation}>
           <Plus size={16} />
           New conversation
         </button>
         <div className="rail-section">
-          <p className="eyebrow">Recent</p>
+          <p className="eyebrow">Chat history</p>
           {agent.sessions.length === 0 ? (
             <p className="rail-empty">Your conversations will live here.</p>
           ) : (
-            agent.sessions.slice(0, 8).map((session) => (
-              <button
+            agent.sessions.slice(0, 30).map((session) => (
+              <div
                 className={`session-row ${
                   agent.activeSession?.id === session.id ? "selected" : ""
                 }`}
                 key={session.id}
-                disabled={!agent.ready || !session.hermes_session_id}
-                onClick={() => void agent.openSession(session)}
-                title={
-                  session.hermes_session_id
-                    ? "Resume this Hermes conversation"
-                    : "This conversation did not reach Hermes"
-                }
               >
-                <span>{session.title}</span>
-                <small>{session.mode === "builder" ? "Builder" : "Operator"}</small>
-              </button>
+                <button
+                  className="session-open"
+                  disabled={!agent.ready || !session.hermes_session_id}
+                  onClick={() => void agent.openSession(session)}
+                  title={
+                    session.hermes_session_id
+                      ? "Resume this Hermes conversation"
+                      : "This conversation did not reach Hermes"
+                  }
+                >
+                  <span>{session.title}</span>
+                  <small>
+                    {session.mode === "builder" ? "Builder" : "Operator"} ·{" "}
+                    {stateCopy[session.state] ?? session.state}
+                  </small>
+                </button>
+                <div className="session-actions">
+                  <button
+                    onClick={() => void renameConversation(session.id, session.title)}
+                    title="Rename conversation"
+                  >
+                    <Pencil size={13} />
+                  </button>
+                  <button
+                    onClick={() => void deleteConversation(session.id, session.title)}
+                    title="Delete conversation"
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+              </div>
             ))
           )}
         </div>

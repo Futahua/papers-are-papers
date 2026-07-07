@@ -140,6 +140,70 @@ impl Database {
         })
     }
 
+    pub fn rename_session(&self, id: &str, title: &str) -> Result<PapersSession, String> {
+        let title = title.trim();
+        if title.is_empty() {
+            return Err("Conversation title cannot be empty".to_string());
+        }
+        if title.chars().count() > 140 {
+            return Err("Conversation title is too long".to_string());
+        }
+        let changed = self
+            .connection
+            .lock()
+            .map_err(|_| "State lock failed")?
+            .execute(
+                "UPDATE sessions SET title = ?2, updated_at = ?3 WHERE id = ?1",
+                params![id, title, Utc::now().to_rfc3339()],
+            )
+            .map_err(|error| error.to_string())?;
+        if changed == 0 {
+            return Err("Conversation no longer exists".to_string());
+        }
+        self.session(id)
+    }
+
+    pub fn delete_session(&self, id: &str) -> Result<(), String> {
+        let mut connection = self.connection.lock().map_err(|_| "State lock failed")?;
+        let transaction = connection.transaction().map_err(|error| error.to_string())?;
+        transaction
+            .execute("DELETE FROM events WHERE session_id = ?1", [id])
+            .map_err(|error| error.to_string())?;
+        transaction
+            .execute("DELETE FROM approvals WHERE session_id = ?1", [id])
+            .map_err(|error| error.to_string())?;
+        let changed = transaction
+            .execute("DELETE FROM sessions WHERE id = ?1", [id])
+            .map_err(|error| error.to_string())?;
+        if changed == 0 {
+            return Err("Conversation no longer exists".to_string());
+        }
+        transaction.commit().map_err(|error| error.to_string())
+    }
+
+    pub fn session(&self, id: &str) -> Result<PapersSession, String> {
+        self.connection
+            .lock()
+            .map_err(|_| "State lock failed")?
+            .query_row(
+                "SELECT id, hermes_session_id, title, mode, state, created_at, updated_at
+                 FROM sessions WHERE id = ?1",
+                [id],
+                |row| {
+                    Ok(PapersSession {
+                        id: row.get(0)?,
+                        hermes_session_id: row.get(1)?,
+                        title: row.get(2)?,
+                        mode: row.get(3)?,
+                        state: row.get(4)?,
+                        created_at: row.get(5)?,
+                        updated_at: row.get(6)?,
+                    })
+                },
+            )
+            .map_err(|_| "Conversation no longer exists".to_string())
+    }
+
     pub fn bind_hermes_session(&self, id: &str, hermes_id: &str) -> Result<(), String> {
         let changed = self
             .connection
@@ -393,12 +457,36 @@ mod tests {
                 "CREATE TABLE sessions (
                     id TEXT PRIMARY KEY, hermes_session_id TEXT, title TEXT, mode TEXT,
                     state TEXT, created_at TEXT, updated_at TEXT
+                );
+                CREATE TABLE events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_id TEXT NOT NULL,
+                    sequence INTEGER NOT NULL,
+                    event_type TEXT NOT NULL,
+                    payload_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
+                CREATE TABLE approvals (
+                    id TEXT PRIMARY KEY,
+                    session_id TEXT,
+                    action_kind TEXT NOT NULL,
+                    target TEXT NOT NULL,
+                    preview_json TEXT NOT NULL,
+                    decision TEXT,
+                    created_at TEXT NOT NULL,
+                    decided_at TEXT
                 );",
             )
             .unwrap();
         let session = db.create_session("A useful task", "operator").unwrap();
         db.update_session_state(&session.id, "acting").unwrap();
         assert_eq!(db.list_sessions().unwrap()[0].state, "acting");
+        assert_eq!(
+            db.rename_session(&session.id, "Better title").unwrap().title,
+            "Better title"
+        );
+        db.delete_session(&session.id).unwrap();
+        assert!(db.list_sessions().unwrap().is_empty());
     }
 
     #[test]

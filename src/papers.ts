@@ -22,6 +22,9 @@ export const papers = {
   listSessions: () => invoke<PapersSession[]>("list_sessions"),
   createSession: (title: string, mode: "operator" | "builder") =>
     invoke<PapersSession>("create_session", { title, mode }),
+  renameSession: (id: string, title: string) =>
+    invoke<PapersSession>("rename_session", { id, title }),
+  deleteSession: (id: string) => invoke<void>("delete_session", { id }),
   bindHermesSession: (id: string, hermesSessionId: string) =>
     invoke<void>("bind_hermes_session", { id, hermesSessionId }),
   updateSessionState: (id: string, state: RunState) =>
