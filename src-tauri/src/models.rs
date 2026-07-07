@@ -16,6 +16,21 @@ pub struct BootstrapStatus {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct AgentProviderStatus {
+    pub provider: String,
+    pub model: String,
+    pub configured_provider: String,
+    pub auth_provider: Option<String>,
+    pub authenticated: bool,
+    pub runtime_ready: bool,
+    pub hermes_home: String,
+    pub config_path: String,
+    pub known_providers: Vec<String>,
+    pub suggested_models: Vec<String>,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct PapersSession {
     pub id: String,
     pub hermes_session_id: Option<String>,

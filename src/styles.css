@@ -259,6 +259,131 @@ input:focus-visible {
   font-size: 10px;
 }
 
+.settings-panel {
+  position: absolute;
+  z-index: 60;
+  top: 82px;
+  left: 50%;
+  width: min(620px, calc(100% - 44px));
+  padding: 18px;
+  transform: translateX(-50%);
+  border: 1px solid var(--line-strong);
+  border-radius: 18px;
+  background: rgba(251, 250, 246, 0.98);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(20px);
+}
+
+.settings-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.settings-header h2 {
+  margin: 7px 0 0;
+  font-family: var(--serif);
+  font-size: 28px;
+  font-weight: 400;
+  letter-spacing: -0.025em;
+}
+
+.settings-header button {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: transparent;
+  cursor: pointer;
+  place-items: center;
+}
+
+.settings-copy,
+.settings-footnote {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.settings-grid {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr);
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.settings-grid label {
+  display: grid;
+  gap: 6px;
+}
+
+.settings-grid label span {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.settings-grid select,
+.settings-grid input {
+  width: 100%;
+  min-height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 9px;
+  background: white;
+  font-size: 11px;
+}
+
+.provider-status-card {
+  display: grid;
+  gap: 7px;
+  margin-top: 13px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(239, 237, 231, 0.55);
+}
+
+.provider-status-card strong {
+  font-size: 12px;
+}
+
+.provider-status-card small {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.provider-status-card div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.provider-status-card span {
+  width: fit-content;
+  padding: 4px 7px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  font: 7px var(--mono);
+  text-transform: uppercase;
+}
+
+.settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 14px;
+}
+
 .row-value {
   color: var(--muted);
   font-family: var(--mono);

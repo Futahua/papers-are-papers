@@ -9,7 +9,10 @@ mod self_edit;
 mod storage;
 
 use gateway_proxy::GatewayProxy;
-use models::{BootstrapStatus, ChangeRecord, InspectSelection, PapersSession, PolicyDecision};
+use models::{
+    AgentProviderStatus, BootstrapStatus, ChangeRecord, InspectSelection, PapersSession,
+    PolicyDecision,
+};
 use paths::PapersPaths;
 use runtime::RuntimeManager;
 use self_edit::SelfEditService;
@@ -52,6 +55,37 @@ fn stop_hermes(state: State<'_, AppState>) -> Result<(), String> {
 #[tauri::command]
 async fn start_nous_login(state: State<'_, AppState>) -> Result<String, String> {
     state.runtime.start_nous_login().await
+}
+
+#[tauri::command]
+async fn agent_provider_status(
+    state: State<'_, AppState>,
+) -> Result<AgentProviderStatus, String> {
+    Ok(state.runtime.provider_status().await)
+}
+
+#[tauri::command]
+async fn set_agent_provider(
+    state: State<'_, AppState>,
+    provider: String,
+    model: String,
+) -> Result<AgentProviderStatus, String> {
+    state.runtime.set_provider_model(provider, model).await
+}
+
+#[tauri::command]
+async fn start_provider_login(
+    state: State<'_, AppState>,
+    provider: String,
+) -> Result<String, String> {
+    state.runtime.start_provider_login(provider).await
+}
+
+#[tauri::command]
+async fn validate_agent_provider(
+    state: State<'_, AppState>,
+) -> Result<AgentProviderStatus, String> {
+    Ok(state.runtime.validate_provider().await)
 }
 
 #[tauri::command]
@@ -296,6 +330,10 @@ fn main() {
             start_hermes,
             stop_hermes,
             start_nous_login,
+            agent_provider_status,
+            set_agent_provider,
+            start_provider_login,
+            validate_agent_provider,
             gateway_connect,
             gateway_send,
             gateway_disconnect,

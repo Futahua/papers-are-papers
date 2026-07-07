@@ -37,7 +37,7 @@ import {
 } from "react";
 import { inspectElement } from "./inspect";
 import { papers } from "./papers";
-import type { ChangeRecord, InspectSelection } from "./types";
+import type { AgentProviderStatus, ChangeRecord, InspectSelection } from "./types";
 import { useAgent } from "./use-agent";
 
 const stateCopy: Record<string, string> = {
@@ -144,6 +144,7 @@ export function App() {
   const agent = useAgent();
   const [draft, setDraft] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [sessionRailOpen, setSessionRailOpen] = useState(true);
   const [activityOpen, setActivityOpen] = useState(true);
   const [inspectMode, setInspectMode] = useState(false);
@@ -153,6 +154,13 @@ export function App() {
   const [foreground, setForeground] = useState("your current app");
   const [changes, setChanges] = useState<ChangeRecord[]>([]);
   const [setupMessage, setSetupMessage] = useState("");
+  const [providerStatus, setProviderStatus] =
+    useState<AgentProviderStatus | null>(null);
+  const [providerDraft, setProviderDraft] = useState({
+    provider: "nous",
+    model: "stepfun/step-3.7-flash:free",
+  });
+  const [providerBusy, setProviderBusy] = useState(false);
   const messagesEnd = useRef<HTMLDivElement>(null);
   const channel = useMemo(() => new BroadcastChannel("papers-agent"), []);
 
@@ -188,6 +196,81 @@ export function App() {
     void papers.foregroundApp().then(setForeground).catch(() => undefined);
     void papers.listChanges().then(setChanges).catch(() => undefined);
   }, []);
+
+  const loadProviderStatus = useCallback(async () => {
+    const status = await papers.agentProviderStatus();
+    setProviderStatus(status);
+    setProviderDraft({
+      provider: status.provider || "nous",
+      model: status.model || "stepfun/step-3.7-flash:free",
+    });
+    setSetupMessage(status.message);
+    return status;
+  }, []);
+
+  useEffect(() => {
+    if (settingsOpen) {
+      void loadProviderStatus().catch((reason) => {
+        agent.setError(reason instanceof Error ? reason.message : String(reason));
+      });
+    }
+  }, [agent, loadProviderStatus, settingsOpen]);
+
+  const saveProviderSettings = useCallback(async () => {
+    setProviderBusy(true);
+    try {
+      const status = await papers.setAgentProvider(
+        providerDraft.provider,
+        providerDraft.model,
+      );
+      setProviderStatus(status);
+      setProviderDraft({
+        provider: status.provider,
+        model: status.model,
+      });
+      setSetupMessage(status.message);
+    } catch (reason) {
+      agent.setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setProviderBusy(false);
+    }
+  }, [agent, providerDraft]);
+
+  const reconnectProvider = useCallback(async () => {
+    setProviderBusy(true);
+    try {
+      setSetupMessage(await papers.startProviderLogin(providerDraft.provider));
+      await loadProviderStatus();
+    } catch (reason) {
+      agent.setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setProviderBusy(false);
+    }
+  }, [agent, loadProviderStatus, providerDraft.provider]);
+
+  const validateProviderSettings = useCallback(async () => {
+    setProviderBusy(true);
+    try {
+      const status = await papers.validateAgentProvider();
+      setProviderStatus(status);
+      setSetupMessage(status.message);
+    } catch (reason) {
+      agent.setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setProviderBusy(false);
+    }
+  }, [agent]);
+
+  const testProviderSettings = useCallback(async () => {
+    if (!agent.ready) {
+      agent.setError("Start Hermes before running a live model test.");
+      return;
+    }
+    await agent.send(
+      "Provider health check: reply with exactly `PAPERS_PROVIDER_TEST_OK`, then stop.",
+      { title: "Provider test" },
+    );
+  }, [agent]);
 
   useEffect(() => {
     if (!inspectMode) {
@@ -394,7 +477,8 @@ export function App() {
             disabled={!agent.runtime?.installed}
             onClick={async () => {
               try {
-                setSetupMessage(await papers.startNousLogin());
+                setSettingsOpen(true);
+                await loadProviderStatus();
               } catch (reason) {
                 agent.setError(
                   reason instanceof Error ? reason.message : String(reason),
@@ -404,9 +488,9 @@ export function App() {
           >
             <Settings size={18} />
             <span>
-              <strong>Nous account</strong>
+              <strong>Settings</strong>
               <small>
-                {setupMessage || "Sign in for models and managed web tools"}
+                {setupMessage || "Provider, model, and hotkeys begin here"}
               </small>
             </span>
             <span className="row-value">
@@ -414,6 +498,120 @@ export function App() {
             </span>
           </button>
         </div>
+      )}
+
+      {settingsOpen && (
+        <section className="settings-panel" role="dialog" aria-modal="true">
+          <div className="settings-header">
+            <div>
+              <p className="eyebrow">Settings</p>
+              <h2>Agent provider</h2>
+            </div>
+            <button onClick={() => setSettingsOpen(false)} aria-label="Close settings">
+              <X size={16} />
+            </button>
+          </div>
+          <p className="settings-copy">
+            Papers changes Hermes&apos; private config only. Credentials stay with
+            Hermes; this screen never shows API keys or OAuth tokens.
+          </p>
+          <div className="settings-grid">
+            <label>
+              <span>Provider</span>
+              <select
+                value={providerDraft.provider}
+                onChange={(event) =>
+                  setProviderDraft((current) => ({
+                    ...current,
+                    provider: event.target.value,
+                  }))
+                }
+              >
+                {(providerStatus?.known_providers ?? ["nous", "openrouter", "auto"]).map(
+                  (provider) => (
+                    <option value={provider} key={provider}>
+                      {provider}
+                    </option>
+                  ),
+                )}
+              </select>
+            </label>
+            <label>
+              <span>Model</span>
+              <input
+                list="papers-model-suggestions"
+                value={providerDraft.model}
+                onChange={(event) =>
+                  setProviderDraft((current) => ({
+                    ...current,
+                    model: event.target.value,
+                  }))
+                }
+                placeholder="provider/model or model id"
+              />
+              <datalist id="papers-model-suggestions">
+                {(providerStatus?.suggested_models ?? [
+                  "stepfun/step-3.7-flash:free",
+                ]).map((model) => (
+                  <option value={model} key={model} />
+                ))}
+              </datalist>
+            </label>
+          </div>
+          <div className="provider-status-card">
+            <strong>
+              {providerStatus?.provider ?? providerDraft.provider} /{" "}
+              {providerStatus?.model ?? providerDraft.model}
+            </strong>
+            <small>{providerStatus?.message || setupMessage}</small>
+            <div>
+              <span>
+                Auth:{" "}
+                {providerStatus?.authenticated
+                  ? "verified"
+                  : providerStatus?.auth_provider
+                    ? `signed in as ${providerStatus.auth_provider}`
+                    : "not verified"}
+              </span>
+              <span>
+                Hermes: {providerStatus?.runtime_ready ? "ready" : "not ready"}
+              </span>
+            </div>
+          </div>
+          <div className="settings-actions">
+            <button
+              className="secondary"
+              onClick={() => void reconnectProvider()}
+              disabled={providerBusy}
+            >
+              Sign in / reconnect
+            </button>
+            <button
+              className="secondary"
+              onClick={() => void validateProviderSettings()}
+              disabled={providerBusy}
+            >
+              Validate
+            </button>
+            <button
+              className="secondary"
+              onClick={() => void testProviderSettings()}
+              disabled={providerBusy || !agent.ready}
+            >
+              Test model
+            </button>
+            <button
+              className="primary"
+              onClick={() => void saveProviderSettings()}
+              disabled={providerBusy}
+            >
+              Save provider
+            </button>
+          </div>
+          <p className="settings-footnote">
+            Hotkey settings are next. Current companion toggle: Ctrl+Alt+Q.
+          </p>
+        </section>
       )}
 
       <aside className={`session-rail ${sessionRailOpen ? "" : "collapsed"}`}>

@@ -343,6 +343,8 @@ The presence of React, HTML, and CSS inside Tauri does not make this a website. 
 - Shows chat history as a real history surface rather than a vague recent list. Conversations can now be renamed or deleted. Deleting a conversation also removes its stored Papers events and approvals.
 - Titles new conversations from the creator's actual prompt instead of the hidden foreground-app context sent to Hermes.
 - Truthfully shows whether Hermes is absent, stopped, starting, ready, or failed.
+- Provides a small Settings view under Basic for the Agent Provider: sanitized active provider/model, sign-in or reconnect, config validation, and a live model-test prompt through the normal Papers/Hermes bridge.
+- Keeps provider credentials under Hermes ownership. Papers reads only sanitized provider/model/auth status and must not send API keys, OAuth tokens, or raw auth files to React.
 - Can download only the pinned official Hermes installer, verify its SHA-256 hash, and install it into Papers' private application-data directory.
 - Can start and stop `hermes serve` on a random loopback-only port. The native host owns the authenticated WebSocket and forwards frames to React through Tauri events.
 - Implements real Hermes session creation, prompt submission, streaming messages, tool events, clarification responses, approvals, and interruption.
@@ -354,15 +356,16 @@ The presence of React, HTML, and CSS inside Tauri does not make this a website. 
 - Can build, launch, accept, reject, and roll back staged source versions through explicit native commands.
 - Keeps the protected runtime, permission policy, MCP boundary, Hermes lock, and launcher out of the builder's writable surface.
 - Provides a committed `BOOT-PAPERS.cmd` launcher in the canonical `REAL` repository. The desktop `Papers` shortcut points to this launcher, which starts the `REAL` release build or builds it from `REAL` if no release executable exists.
+- Enables Tauri NSIS bundling for a current-user Windows installer. The installer path is configuration-ready but still requires a fresh install/reinstall/uninstall proof before it can be called private-beta verified.
 - Has a current release executable built directly inside `REAL`, and the latest manual relaunch used that `REAL` executable rather than the older work-copy build.
 
 ### What the current app does not do
 
 - Create, open, save, or switch Backpacks.
-- Present a complete Settings experience.
+- Present a complete Settings experience beyond the initial provider/model controls and hotkey note.
 - Start with Windows.
 - Use a system tray.
-- Install itself.
+- Prove installer install/reinstall/uninstall behavior.
 - Automatically update its protected launcher or trust boundary.
 - Guarantee control of elevated Administrator windows.
 - Type passwords, payment details, or two-factor codes.
@@ -376,6 +379,8 @@ The following have not yet been end-to-end verified on the creator's machine:
 - A real self-edit produced by Hermes, experienced by the creator, accepted, pushed, and rolled back.
 - Offline GitHub retry and remote-divergence recovery.
 - Pause and Stop interrupting a real in-progress Hermes task promptly.
+- Provider/model switching away from the current default and back, including a bad-model failure that does not corrupt Hermes config.
+- Fresh Windows installer install, reinstall preserving user data, uninstall preserving user data, and launching without the repo folder.
 
 Those paths contain real implementation, not canned responses, but they remain **Partial** until exercised with the external runtime and creator.
 

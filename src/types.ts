@@ -30,6 +30,20 @@ export interface BootstrapStatus {
   message: string;
 }
 
+export interface AgentProviderStatus {
+  provider: string;
+  model: string;
+  configured_provider: string;
+  auth_provider?: string;
+  authenticated: boolean;
+  runtime_ready: boolean;
+  hermes_home: string;
+  config_path: string;
+  known_providers: string[];
+  suggested_models: string[];
+  message: string;
+}
+
 export interface PapersSession {
   id: string;
   hermes_session_id?: string;

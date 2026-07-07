@@ -1,4 +1,4 @@
-use crate::models::{BootstrapStatus, HermesLock};
+use crate::models::{AgentProviderStatus, BootstrapStatus, HermesLock};
 use crate::paths::PapersPaths;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -14,6 +14,9 @@ use std::os::windows::process::CommandExt;
 
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+const DEFAULT_PROVIDER: &str = "nous";
+const DEFAULT_MODEL: &str = "stepfun/step-3.7-flash:free";
 
 struct RuntimeProcess {
     child: Option<Child>,
@@ -434,6 +437,104 @@ impl RuntimeManager {
         })
     }
 
+    pub async fn provider_status(&self) -> AgentProviderStatus {
+        let config_path = self.paths.hermes_home.join("config.yaml");
+        let config = self.read_main_config().unwrap_or_else(|_| serde_json::json!({}));
+        let (configured_provider, model) = model_config_values(&config);
+        let auth_provider = self.active_auth_provider();
+        let provider = if configured_provider.is_empty() || configured_provider == "auto" {
+            auth_provider
+                .clone()
+                .unwrap_or_else(|| DEFAULT_PROVIDER.to_string())
+        } else {
+            configured_provider.clone()
+        };
+        let authenticated = self.provider_authenticated(&provider, auth_provider.as_deref());
+        let runtime = self.status().await;
+        let runtime_ready = runtime.connected;
+        let message = if !runtime.installed {
+            "Hermes is not installed yet. Install the local agent engine first.".to_string()
+        } else if !authenticated {
+            format!("{provider} is selected, but Papers has not verified a saved sign-in for it.")
+        } else if runtime_ready {
+            format!("{provider} / {model} is selected and Hermes is reachable.")
+        } else {
+            format!("{provider} / {model} is selected. Start Hermes to run a live test.")
+        };
+
+        AgentProviderStatus {
+            provider,
+            model,
+            configured_provider,
+            auth_provider,
+            authenticated,
+            runtime_ready,
+            hermes_home: self.paths.hermes_home.to_string_lossy().into_owned(),
+            config_path: config_path.to_string_lossy().into_owned(),
+            known_providers: known_providers(),
+            suggested_models: suggested_models(),
+            message,
+        }
+    }
+
+    pub async fn set_provider_model(
+        &self,
+        provider: String,
+        model: String,
+    ) -> Result<AgentProviderStatus, String> {
+        let provider = normalize_provider(&provider)?;
+        let model = normalize_model(&model)?;
+        let mut config = self.read_main_config().unwrap_or_else(|_| serde_json::json!({}));
+        if !config.is_object() {
+            config = serde_json::json!({});
+        }
+        let root = config.as_object_mut().expect("object checked above");
+        let previous_model = root.get("model").cloned();
+        let mut model_section = match previous_model {
+            Some(Value::Object(map)) => map,
+            Some(Value::String(existing)) if !existing.trim().is_empty() => {
+                let mut map = serde_json::Map::new();
+                map.insert("default".to_string(), Value::String(existing));
+                map
+            }
+            _ => serde_json::Map::new(),
+        };
+        model_section.insert("default".to_string(), Value::String(model));
+        model_section.insert("provider".to_string(), Value::String(provider));
+        for stale_key in ["api_key", "base_url", "api_mode", "auth_mode"] {
+            model_section.remove(stale_key);
+        }
+        root.insert("model".to_string(), Value::Object(model_section));
+        self.write_main_config(&config)?;
+        self.write_guarded_config()?;
+        Ok(self.provider_status().await)
+    }
+
+    pub async fn start_provider_login(&self, provider: String) -> Result<String, String> {
+        let provider = normalize_provider(&provider)?;
+        match provider.as_str() {
+            "auto" | "nous" => self.start_nous_login().await,
+            other => Err(format!(
+                "Papers can open Nous sign-in today. {other} credentials stay Hermes-owned; use Hermes setup for that provider until Papers adds its safe login wrapper."
+            )),
+        }
+    }
+
+    pub async fn validate_provider(&self) -> AgentProviderStatus {
+        let mut status = self.provider_status().await;
+        if status.model.trim().is_empty() {
+            status.message =
+                "No model is selected. Choose a model before sending a live test.".to_string();
+        } else if status.runtime_ready {
+            status.message =
+                "Config is readable and Hermes is ready. Run the live test prompt next.".to_string();
+        } else {
+            status.message =
+                "Config is readable. Start Hermes before running the live test prompt.".to_string();
+        }
+        status
+    }
+
     pub fn gateway_url(&self) -> Result<String, String> {
         let (port, token) = self.gateway_credentials()?;
         Ok(format!("ws://127.0.0.1:{port}/api/ws?token={token}"))
@@ -449,6 +550,64 @@ impl RuntimeManager {
             .clone()
             .ok_or_else(|| "Hermes did not report its local session credential".to_string())?;
         Ok((port, token))
+    }
+
+    fn read_main_config(&self) -> Result<Value, String> {
+        let path = self.paths.hermes_home.join("config.yaml");
+        if !path.exists() {
+            return Ok(serde_json::json!({}));
+        }
+        serde_yaml::from_slice(
+            &std::fs::read(&path)
+                .map_err(|error| format!("Could not read Hermes settings: {error}"))?,
+        )
+        .map_err(|error| format!("Could not parse Hermes settings: {error}"))
+    }
+
+    fn write_main_config(&self, config: &Value) -> Result<(), String> {
+        std::fs::create_dir_all(&self.paths.hermes_home).map_err(|error| error.to_string())?;
+        let path = self.paths.hermes_home.join("config.yaml");
+        let tmp = path.with_extension("yaml.tmp");
+        let yaml = serde_yaml::to_string(config)
+            .map_err(|error| format!("Could not serialize Hermes settings: {error}"))?;
+        std::fs::write(&tmp, yaml)
+            .map_err(|error| format!("Could not stage Hermes settings: {error}"))?;
+        std::fs::rename(&tmp, &path)
+            .map_err(|error| format!("Could not save Hermes settings: {error}"))
+    }
+
+    fn active_auth_provider(&self) -> Option<String> {
+        let path = self.paths.hermes_home.join("auth.json");
+        let bytes = std::fs::read(path).ok()?;
+        let auth: Value = serde_json::from_slice(&bytes).ok()?;
+        auth.get("active_provider")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string)
+    }
+
+    fn provider_authenticated(&self, provider: &str, auth_provider: Option<&str>) -> bool {
+        if auth_provider
+            .map(|active| active.eq_ignore_ascii_case(provider))
+            .unwrap_or(false)
+        {
+            return true;
+        }
+        if provider == "auto" && auth_provider.is_some() {
+            return true;
+        }
+        let path = self.paths.hermes_home.join("auth.json");
+        let Ok(bytes) = std::fs::read(path) else {
+            return false;
+        };
+        let Ok(auth) = serde_json::from_slice::<Value>(&bytes) else {
+            return false;
+        };
+        auth.get("providers")
+            .and_then(Value::as_object)
+            .map(|providers| providers.contains_key(provider))
+            .unwrap_or(false)
     }
 
     async fn install_computer_use(&self) -> Result<(), String> {
@@ -666,6 +825,80 @@ fn available_port() -> Result<u16, String> {
         .and_then(|listener| listener.local_addr())
         .map(|address| address.port())
         .map_err(|error| format!("Could not reserve a local Hermes port: {error}"))
+}
+
+fn model_config_values(config: &Value) -> (String, String) {
+    match config.get("model") {
+        Some(Value::Object(map)) => {
+            let provider = map
+                .get("provider")
+                .and_then(Value::as_str)
+                .unwrap_or(DEFAULT_PROVIDER)
+                .trim()
+                .to_string();
+            let model = map
+                .get("default")
+                .or_else(|| map.get("model"))
+                .and_then(Value::as_str)
+                .unwrap_or(DEFAULT_MODEL)
+                .trim()
+                .to_string();
+            (provider, model)
+        }
+        Some(Value::String(model)) if !model.trim().is_empty() => {
+            (DEFAULT_PROVIDER.to_string(), model.trim().to_string())
+        }
+        _ => (DEFAULT_PROVIDER.to_string(), DEFAULT_MODEL.to_string()),
+    }
+}
+
+fn normalize_provider(value: &str) -> Result<String, String> {
+    let provider = value.trim().to_ascii_lowercase();
+    if provider.is_empty() {
+        return Err("Choose a provider first.".to_string());
+    }
+    if provider.len() > 64
+        || !provider
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.' | ':'))
+    {
+        return Err("Provider names may only use letters, numbers, dash, underscore, dot, or colon.".to_string());
+    }
+    Ok(provider)
+}
+
+fn normalize_model(value: &str) -> Result<String, String> {
+    let model = value.trim();
+    if model.is_empty() {
+        return Err("Choose a model first.".to_string());
+    }
+    if model.len() > 220 || model.contains('\n') || model.contains('\r') {
+        return Err("Model names must be a single short line.".to_string());
+    }
+    Ok(model.to_string())
+}
+
+fn known_providers() -> Vec<String> {
+    [
+        "nous",
+        "openrouter",
+        "anthropic",
+        "openai",
+        "google",
+        "xai",
+        "ollama",
+        "auto",
+    ]
+    .into_iter()
+    .map(ToString::to_string)
+    .collect()
+}
+
+fn suggested_models() -> Vec<String> {
+    [DEFAULT_MODEL]
+        .into_iter()
+        .map(ToString::to_string)
+        .collect()
 }
 
 fn create_log(path: &std::path::Path) -> Result<File, String> {

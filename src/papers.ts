@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  AgentProviderStatus,
   BootstrapStatus,
   ChangeRecord,
   GatewayEvent,
@@ -15,6 +16,14 @@ export const papers = {
   startHermes: () => invoke<BootstrapStatus>("start_hermes"),
   stopHermes: () => invoke<void>("stop_hermes"),
   startNousLogin: () => invoke<string>("start_nous_login"),
+  agentProviderStatus: () =>
+    invoke<AgentProviderStatus>("agent_provider_status"),
+  setAgentProvider: (provider: string, model: string) =>
+    invoke<AgentProviderStatus>("set_agent_provider", { provider, model }),
+  startProviderLogin: (provider: string) =>
+    invoke<string>("start_provider_login", { provider }),
+  validateAgentProvider: () =>
+    invoke<AgentProviderStatus>("validate_agent_provider"),
   showCompanion: () => invoke<void>("show_companion"),
   hideCompanion: () => invoke<void>("hide_companion"),
   showMain: () => invoke<void>("show_main"),
