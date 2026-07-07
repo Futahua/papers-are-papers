@@ -481,7 +481,9 @@ Do not build a skill marketplace, skill registry, or Backpack-skill contract yet
 
 The creator uses `C:\Users\admin\Desktop\sloptop_engine.ahk`, which treats `Ctrl+Space` and `Ctrl+Shift+Space` as window-control modes and suppresses `Space` while physical `Ctrl` is held. Therefore Papers must not use a `Ctrl+Space`-family global shortcut.
 
-The current Papers companion shortcut is `Ctrl+Alt+Q`. Normal prompts submitted inside the main Papers window should remain inside the main window and must not auto-open the companion. The companion is for quick access from other Windows apps, background status, Pause/Stop, Expand, approvals, questions, failures, and completion attention.
+The current Papers companion shortcut is `Ctrl+Alt+Q`. Pressing it toggles the companion: if hidden, show it; if visible, hide it. Normal prompts submitted inside the main Papers window should remain inside the main window and must not auto-open the companion. The companion is for quick access from other Windows apps, background status, Pause/Stop, Expand, approvals, questions, failures, and completion attention.
+
+Hotkeys are expected to become customizable Settings over time. Do not treat `Ctrl+Alt+Q` or any future feature shortcut as a permanent product law. The long-term Settings direction is that the creator can view and change shortcuts for companion toggle, Inspect, Pause/Stop, and other global features without editing code.
 
 ## Decision status language
 

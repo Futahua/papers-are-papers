@@ -88,6 +88,19 @@ fn hide_companion(app: tauri::AppHandle) -> Result<(), String> {
         .map_err(|error| error.to_string())
 }
 
+fn toggle_companion(app: &tauri::AppHandle) {
+    let Some(window) = app.get_webview_window("companion") else {
+        return;
+    };
+    if window.is_visible().unwrap_or(false) {
+        let _ = window.hide();
+        return;
+    }
+    position_companion(&window);
+    let _ = window.show();
+    let _ = window.set_focus();
+}
+
 #[tauri::command]
 fn show_main(app: tauri::AppHandle) -> Result<(), String> {
     let window = app
@@ -255,11 +268,7 @@ fn main() {
                             }
                         }
                     }
-                    if let Some(window) = app.get_webview_window("companion") {
-                        position_companion(&window);
-                        let _ = window.show();
-                        let _ = window.set_focus();
-                    }
+                    toggle_companion(app);
                 })
                 .build(),
         )
