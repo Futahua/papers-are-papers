@@ -187,7 +187,9 @@ impl Database {
             .get("type")
             .and_then(Value::as_str)
             .unwrap_or("unknown");
-        let payload = event.get("payload").cloned().unwrap_or(Value::Null);
+        let Some(payload) = sanitized_event_payload(event_type, event) else {
+            return Ok(());
+        };
         let connection = self.connection.lock().map_err(|_| "State lock failed")?;
         let sequence: i64 = connection
             .query_row(
@@ -333,6 +335,48 @@ impl Database {
     }
 }
 
+fn sanitized_event_payload(event_type: &str, event: &Value) -> Option<Value> {
+    if is_private_reasoning_event(event_type) {
+        return None;
+    }
+
+    let mut payload = event.get("payload").cloned().unwrap_or(Value::Null);
+    redact_private_reasoning_fields(&mut payload);
+    Some(payload)
+}
+
+fn is_private_reasoning_event(event_type: &str) -> bool {
+    let normalized = event_type.to_ascii_lowercase();
+    normalized.starts_with("reasoning.")
+        || normalized.starts_with("thinking.")
+        || normalized.starts_with("chain_of_thought.")
+}
+
+fn redact_private_reasoning_fields(value: &mut Value) {
+    match value {
+        Value::Object(map) => {
+            for key in [
+                "reasoning",
+                "thinking",
+                "chain_of_thought",
+                "chainOfThought",
+                "cot",
+            ] {
+                map.remove(key);
+            }
+            for child in map.values_mut() {
+                redact_private_reasoning_fields(child);
+            }
+        }
+        Value::Array(items) => {
+            for child in items {
+                redact_private_reasoning_fields(child);
+            }
+        }
+        _ => {}
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -355,5 +399,60 @@ mod tests {
         let session = db.create_session("A useful task", "operator").unwrap();
         db.update_session_state(&session.id, "acting").unwrap();
         assert_eq!(db.list_sessions().unwrap()[0].state, "acting");
+    }
+
+    #[test]
+    fn does_not_store_private_reasoning_events_or_fields() {
+        let db = Database {
+            connection: Arc::new(Mutex::new(Connection::open_in_memory().unwrap())),
+        };
+        db.connection
+            .lock()
+            .unwrap()
+            .execute_batch(
+                "CREATE TABLE events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_id TEXT NOT NULL,
+                    sequence INTEGER NOT NULL,
+                    event_type TEXT NOT NULL,
+                    payload_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );",
+            )
+            .unwrap();
+
+        db.record_event(
+            "session-1",
+            &serde_json::json!({
+                "type": "reasoning.delta",
+                "payload": { "text": "private thinking" }
+            }),
+        )
+        .unwrap();
+        db.record_event(
+            "session-1",
+            &serde_json::json!({
+                "type": "message.complete",
+                "payload": {
+                    "text": "public answer",
+                    "reasoning": "private thinking",
+                    "nested": { "chain_of_thought": "also private" }
+                }
+            }),
+        )
+        .unwrap();
+
+        let connection = db.connection.lock().unwrap();
+        let count: i64 = connection
+            .query_row("SELECT COUNT(*) FROM events", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(count, 1);
+
+        let payload: String = connection
+            .query_row("SELECT payload_json FROM events", [], |row| row.get(0))
+            .unwrap();
+        assert!(payload.contains("public answer"));
+        assert!(!payload.contains("private thinking"));
+        assert!(!payload.contains("chain_of_thought"));
     }
 }

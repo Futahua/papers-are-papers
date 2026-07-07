@@ -150,7 +150,7 @@ The AI should eventually:
 - Avoid reinventing agent infrastructure merely for the sake of owning it.
 - Admit uncertainty and ask a useful follow-up when it genuinely does not understand.
 
-**Partial:** Papers has now installed its pinned Hermes Agent 0.18.0 runtime on the creator's machine, reached a healthy loopback server, installed a hash-verified private Cua Driver 0.7.0, and launched the latest release build successfully. The native authenticated gateway bridge compiles, Hermes reports `HERMES_DASHBOARD_READY` from the release launch, and the protocol path has been smoke-tested without browser-origin leakage. Nous sign-in, a real model turn, and Windows operation remain unverified, so no documentation may describe the agent as end-to-end working yet.
+**Partial:** Papers has now installed its pinned Hermes Agent 0.18.0 runtime on the creator's machine, reached a healthy loopback server, installed a hash-verified private Cua Driver 0.7.0, launched the latest release build successfully, completed Nous Portal sign-in, and completed real model turns through the Papers app bridge. The working free model is currently `stepfun/step-3.7-flash:free` through Nous Portal. A harmless inspect-only Computer Use pass against Notepad succeeded without editing. Approved Windows mutation, Pause/Stop behavior, self-edit preview, Keep/Reject, GitHub sync, and rollback remain unverified, so no documentation may describe the agent as end-to-end working yet.
 
 ### Data source
 
@@ -402,7 +402,7 @@ What still needs to be designed:
 - Testing and performance budgets.
 - Runtime upgrade compatibility tests.
 
-No future agent should describe the agent as working merely because the bridge compiles or Hermes starts. The next proof must complete Nous sign-in and perform a creator-tested task.
+No future agent should describe the agent as fully working merely because the bridge compiles, Hermes starts, or one model call succeeds. The next proof must perform a creator-approved Windows action, then complete the self-edit preview flow.
 
 ### Current machine cleanup required
 
@@ -420,9 +420,9 @@ Before the next experience test:
 Exercise the Agent-first vertical slice with the creator:
 
 1. Re-check the old Cua auto-start task and remove it only if still present, with the creator's visible approval.
-2. Sign into Nous Portal.
-3. Verify Hermes and private Computer Use health from inside Papers.
-4. Complete one harmless inspect-only task in a visible Windows program.
+2. Confirm Nous Portal remains signed in and the selected free model still works.
+3. Complete one harmless creator-approved Windows action in a scratch surface.
+4. Verify Pause and Stop interrupt promptly.
 5. Enter Inspect mode and request one visible Papers change.
 6. Build and experience the temporary version.
 7. Reject or keep it based on experience.
@@ -681,4 +681,8 @@ Papers installed the pinned Hermes Agent 0.18.0 runtime and reached a healthy lo
 
 Computer Use is now pinned to Cua Driver 0.7.0, verified against the publisher's SHA-256, and extracted privately without PATH changes or auto-start. Hermes gateway traffic now crosses a native Tauri bridge so the per-launch token remains in Rust memory.
 
-The latest release build and automated checks pass. The release launches and reaches a Hermes ready signal. Nous sign-in and a real task remain pending. The unintended elevated Cua scheduled task created by the superseded installer path was not present on the latest check, but future agents should re-check before any real experience test.
+The latest release build and automated checks pass. The release launches and reaches a Hermes ready signal. Nous sign-in is complete in Papers' actual private Hermes home at `%LOCALAPPDATA%\Papers\data\hermes`. The first paid/default model choice failed because the account had insufficient credits, so Papers was switched to the free Nous model `stepfun/step-3.7-flash:free`. A tiny model turn through Papers returned `PAPERS_FIXED_OK`.
+
+During the first app-bridge proof, Hermes emitted reasoning/thinking events and a `reasoning` field inside `message.complete`; Papers initially stored them in SQLite. This violated the rule that Papers must not reveal or store private chain-of-thought. The native storage layer now drops private reasoning/thinking event types and recursively removes private reasoning fields before persistence. The already-captured local database records were scrubbed. Tests verify this behavior.
+
+A harmless inspect-only Computer Use pass against Notepad succeeded and did not edit anything. Notepad restored existing creator tabs rather than a blank scratch file, so future mutation tests must use an explicitly prepared scratch surface before asking Hermes to type. The unintended elevated Cua scheduled task created by the superseded installer path was not present on the latest check, but future agents should re-check before any real experience test.
