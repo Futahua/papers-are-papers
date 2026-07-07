@@ -27,6 +27,8 @@ struct AppState {
     last_foreground: Mutex<String>,
 }
 
+const PAPERS_GLOBAL_SHORTCUT: &str = "Ctrl+Alt+Q";
+
 #[tauri::command]
 async fn bootstrap_status(state: State<'_, AppState>) -> Result<BootstrapStatus, String> {
     Ok(state.runtime.status().await)
@@ -263,9 +265,9 @@ fn main() {
         )
         .manage(state)
         .setup(|app| {
-            if let Err(error) = app.global_shortcut().register("Ctrl+Alt+Space") {
+            if let Err(error) = app.global_shortcut().register(PAPERS_GLOBAL_SHORTCUT) {
                 eprintln!(
-                    "Papers could not register Ctrl+Alt+Space because another app already owns it: {error}"
+                    "Papers could not register {PAPERS_GLOBAL_SHORTCUT} because another app already owns it: {error}"
                 );
             }
 

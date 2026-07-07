@@ -346,7 +346,8 @@ The presence of React, HTML, and CSS inside Tauri does not make this a website. 
 - Can download only the pinned official Hermes installer, verify its SHA-256 hash, and install it into Papers' private application-data directory.
 - Can start and stop `hermes serve` on a random loopback-only port. The native host owns the authenticated WebSocket and forwards frames to React through Tauri events.
 - Implements real Hermes session creation, prompt submission, streaming messages, tool events, clarification responses, approvals, and interruption.
-- Opens a compact companion through `Ctrl+Alt+Space` when that shortcut is available; the companion can target the current window, accept a request, pause, stop, and expand Papers.
+- Opens a compact companion through `Ctrl+Alt+Q` when that shortcut is available; the companion can target the current window, accept a request, pause, stop, and expand Papers.
+- Does not automatically open the companion when the creator submits a normal prompt inside the main Papers window.
 - Lets the creator enter Inspect mode, click a rendered Papers element, and describe a temporary self-change using real element and source metadata.
 - Persists Papers-specific state locally in SQLite without duplicating Hermes' own conversation memory.
 - Creates isolated Git worktrees for self-edit records and exposes restricted builder tools within the staging root.
@@ -475,6 +476,12 @@ For Papers vocabulary, treat the likely separation as:
 - Skill: how the agent learns to perform a repeatable class of work well.
 
 Do not build a skill marketplace, skill registry, or Backpack-skill contract yet. This is a useful future design direction, not the current milestone.
+
+### Companion shortcut and SlopTop compatibility
+
+The creator uses `C:\Users\admin\Desktop\sloptop_engine.ahk`, which treats `Ctrl+Space` and `Ctrl+Shift+Space` as window-control modes and suppresses `Space` while physical `Ctrl` is held. Therefore Papers must not use a `Ctrl+Space`-family global shortcut.
+
+The current Papers companion shortcut is `Ctrl+Alt+Q`. Normal prompts submitted inside the main Papers window should remain inside the main window and must not auto-open the companion. The companion is for quick access from other Windows apps, background status, Pause/Stop, Expand, approvals, questions, failures, and completion attention.
 
 ## Decision status language
 

@@ -241,7 +241,6 @@ export function App() {
       if (!draft.trim() || !agent.ready) return;
       const text = draft;
       setDraft("");
-      await papers.showCompanion().catch(() => undefined);
       await agent.send(text, {
         context: `The user is currently working with ${foreground}.`,
       });
