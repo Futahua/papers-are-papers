@@ -150,7 +150,7 @@ The AI should eventually:
 - Avoid reinventing agent infrastructure merely for the sake of owning it.
 - Admit uncertainty and ask a useful follow-up when it genuinely does not understand.
 
-**Partial:** Papers has now installed its pinned Hermes Agent 0.18.0 runtime on the creator's machine, reached a healthy loopback server, installed a hash-verified private Cua Driver 0.7.0, launched the latest release build successfully, completed Nous Portal sign-in, and completed real model turns through the Papers app bridge. The working free model is currently `stepfun/step-3.7-flash:free` through Nous Portal. A harmless inspect-only Computer Use pass against Notepad succeeded without editing. Approved Windows mutation, Pause/Stop behavior, self-edit preview, Keep/Reject, GitHub sync, and rollback remain unverified, so no documentation may describe the agent as end-to-end working yet.
+**Partial:** Papers has now installed its pinned Hermes Agent 0.18.0 runtime on the creator's machine, reached a healthy loopback server, installed a hash-verified private Cua Driver 0.7.0, launched the latest release build successfully, completed Nous Portal sign-in, and completed real model turns through the Papers app bridge. The working free model is currently `stepfun/step-3.7-flash:free` through Nous Portal. A harmless inspect-only Computer Use pass against Notepad succeeded without editing. A creator-approved low-risk Windows action also succeeded: Hermes typed `PAPERS_TYPED_OK` into a disposable Notepad scratch tab and did not save the file. Pause/Stop behavior, self-edit preview, Keep/Reject, GitHub sync from self-edit, and rollback remain unverified, so no documentation may describe the agent as end-to-end working yet.
 
 ### Data source
 
@@ -421,12 +421,11 @@ Exercise the Agent-first vertical slice with the creator:
 
 1. Re-check the old Cua auto-start task and remove it only if still present, with the creator's visible approval.
 2. Confirm Nous Portal remains signed in and the selected free model still works.
-3. Complete one harmless creator-approved Windows action in a scratch surface.
-4. Verify Pause and Stop interrupt promptly.
-5. Enter Inspect mode and request one visible Papers change.
-6. Build and experience the temporary version.
-7. Reject or keep it based on experience.
-8. If kept, verify the canonical `REAL` commit, GitHub push, version activation, and rollback.
+3. Verify Pause and Stop interrupt promptly.
+4. Enter Inspect mode and request one visible Papers change.
+5. Build and experience the temporary version.
+6. Reject or keep it based on experience.
+7. If kept, verify the canonical `REAL` commit, GitHub push, version activation, and rollback.
 
 Failures found during this exercise should harden the permanent Agent contract before Backpacks are generated.
 
@@ -685,4 +684,4 @@ The latest release build and automated checks pass. The release launches and rea
 
 During the first app-bridge proof, Hermes emitted reasoning/thinking events and a `reasoning` field inside `message.complete`; Papers initially stored them in SQLite. This violated the rule that Papers must not reveal or store private chain-of-thought. The native storage layer now drops private reasoning/thinking event types and recursively removes private reasoning fields before persistence. The already-captured local database records were scrubbed. Tests verify this behavior.
 
-A harmless inspect-only Computer Use pass against Notepad succeeded and did not edit anything. Notepad restored existing creator tabs rather than a blank scratch file, so future mutation tests must use an explicitly prepared scratch surface before asking Hermes to type. The unintended elevated Cua scheduled task created by the superseded installer path was not present on the latest check, but future agents should re-check before any real experience test.
+A harmless inspect-only Computer Use pass against Notepad succeeded and did not edit anything. Notepad restored existing creator tabs rather than a blank scratch file, so the mutation test used an explicitly prepared disposable scratch file in `%TEMP%`. Hermes selected the scratch tab, typed `PAPERS_TYPED_OK`, and did not save; a visual screenshot confirmed the marker was present while the disk file remained unchanged. The unintended elevated Cua scheduled task created by the superseded installer path was not present on the latest check, but future agents should re-check before any real experience test.
