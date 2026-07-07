@@ -336,8 +336,12 @@ The presence of React, HTML, and CSS inside Tauri does not make this a website. 
 ### What the current app honestly does
 
 - Opens a real desktop window.
-- Presents the Agent-first main workspace with conversations, a Work rail, approvals, clarification prompts, and a global Ask composer.
+- Presents the Agent-first main workspace with conversations, chat history, a Work rail, approvals, clarification prompts, and a global Ask composer.
 - Separates normal chat messages from public work items: reasoning summaries, tool steps, artifacts, approvals, and self-edit candidates.
+- Renders basic assistant Markdown in the conversation view, including paragraphs, bullets, bold text, and inline code.
+- Lets the creator hide the left chat-history rail and collapse the right Work rail without leaving a large blank panel.
+- Shows chat history as a real history surface rather than a vague recent list. Conversations can now be renamed or deleted. Deleting a conversation also removes its stored Papers events and approvals.
+- Titles new conversations from the creator's actual prompt instead of the hidden foreground-app context sent to Hermes.
 - Truthfully shows whether Hermes is absent, stopped, starting, ready, or failed.
 - Can download only the pinned official Hermes installer, verify its SHA-256 hash, and install it into Papers' private application-data directory.
 - Can start and stop `hermes serve` on a random loopback-only port. The native host owns the authenticated WebSocket and forwards frames to React through Tauri events.
@@ -348,6 +352,8 @@ The presence of React, HTML, and CSS inside Tauri does not make this a website. 
 - Creates isolated Git worktrees for self-edit records and exposes restricted builder tools within the staging root.
 - Can build, launch, accept, reject, and roll back staged source versions through explicit native commands.
 - Keeps the protected runtime, permission policy, MCP boundary, Hermes lock, and launcher out of the builder's writable surface.
+- Provides a committed `BOOT-PAPERS.cmd` launcher in the canonical `REAL` repository. The desktop `Papers` shortcut points to this launcher, which starts the `REAL` release build or builds it from `REAL` if no release executable exists.
+- Has a current release executable built directly inside `REAL`, and the latest manual relaunch used that `REAL` executable rather than the older work-copy build.
 
 ### What the current app does not do
 
@@ -366,12 +372,9 @@ The presence of React, HTML, and CSS inside Tauri does not make this a website. 
 
 The following have not yet been end-to-end verified on the creator's machine:
 
-- The latest native gateway bridge launched against the installed Hermes server.
-- Nous Portal OAuth and model selection.
-- Hermes Computer Use operation against Windows programs.
-- A real model response streamed into Papers.
 - A real self-edit produced by Hermes, experienced by the creator, accepted, pushed, and rolled back.
 - Offline GitHub retry and remote-divergence recovery.
+- Pause and Stop interrupting a real in-progress Hermes task promptly.
 
 Those paths contain real implementation, not canned responses, but they remain **Partial** until exercised with the external runtime and creator.
 
@@ -394,7 +397,7 @@ What is directionally correct:
 What still needs to be designed:
 
 - Backpack contract and lifecycle.
-- Practical Work rail polish for files, screenshots, diffs, previews, and generated artifacts.
+- Practical Work rail polish for clickable files, screenshots, diffs, previews, and generated artifacts.
 - Tool registry and lifecycle.
 - Data Source contract.
 - The final operator-tool contract for whole-PC work.
@@ -406,7 +409,7 @@ What still needs to be designed:
 - Testing and performance budgets.
 - Runtime upgrade compatibility tests.
 
-No future agent should describe the agent as fully working merely because the bridge compiles, Hermes starts, or one model call succeeds. The next proof must perform a creator-approved Windows action, then complete the self-edit preview flow.
+No future agent should describe the agent as fully working merely because the bridge compiles, Hermes starts, or one model call succeeds. A creator-approved Windows action has succeeded, but the next proof must verify Pause/Stop and complete the self-edit preview flow.
 
 ### Current machine cleanup required
 
@@ -455,6 +458,23 @@ Work rail persistence should be scoped rather than global clutter:
 - The global AI can still reference broader context when allowed; the rail should not accidentally imply that the agent is trapped inside one Backpack.
 
 This is intentionally narrower than the older Assistant project's larger language around observability, collaboration, and autonomous research. Those ideas remain historical context only. Papers should first become pleasant and reliable for ordinary agent work.
+
+### Skills and capability packs
+
+The creator asked whether Anthropic's public Skills repository is useful. The current conclusion is:
+
+- **Useful as a pattern:** a skill is a small folder of task instructions, scripts, and supporting resources that an agent loads only when relevant.
+- **Not a replacement for Backpacks:** a Backpack is a user-facing room or lens. A skill is an agent-facing procedure or capability pack.
+- **Not code to import blindly:** Anthropic's skills are references for structure and ergonomics. License and source status must be checked before adopting any implementation.
+- **Likely future use:** Papers may eventually let the agent create or install skills/capability packs for repeatable work such as frontend design, preview testing, document workflows, and safe automation recipes.
+
+For Papers vocabulary, treat the likely separation as:
+
+- Backpack: where the creator experiences work.
+- Tool: what can execute or connect to the machine.
+- Skill: how the agent learns to perform a repeatable class of work well.
+
+Do not build a skill marketplace, skill registry, or Backpack-skill contract yet. This is a useful future design direction, not the current milestone.
 
 ## Decision status language
 
@@ -624,7 +644,7 @@ The smallest question whose answer unlocks the next meaningful step.
 ## Rules for future agents
 
 1. Read this document before acting.
-2. Treat `REAL` as the canonical repository.
+2. Treat `REAL` as the canonical repository and primary working tree whenever permissions allow it. The older work copy exists only as history/fallback context and should not receive new development by default.
 3. Do not inspect, modify, or document obsolete external artifacts unless explicitly asked.
 4. Treat the older Experience concept only as summarized origin context; the current Backpack model wins.
 5. Ask about desired behavior in plain language.
@@ -643,6 +663,8 @@ The smallest question whose answer unlocks the next meaningful step.
 18. Never call a menu entry a working system.
 19. Never call a successful debug build production-ready.
 20. Update this document when the truth materially changes.
+21. If a change is made outside `REAL`, sync it into `REAL` before claiming the creator can boot or test it.
+22. Keep `BOOT-PAPERS.cmd` and the Desktop `Papers` shortcut aligned with the canonical `REAL` build path.
 
 ## Current open questions
 
@@ -716,3 +738,15 @@ A harmless inspect-only Computer Use pass against Notepad succeeded and did not 
 ### 2026-07-07 - Practical workbench UI direction confirmed
 
 After reviewing the creator's older Assistant project and several agent references, the creator clarified that the near-term need is not observability, agent collaboration, or broad research automation. The desired near-term feel is a practical Codex/Claude-Code-like workbench: clear streaming, safe public reasoning summaries, files/artifacts, diffs, approvals, and self-edit previews. Papers now treats the right-side rail as a Work rail and begins separating chat from work items.
+
+### 2026-07-07 - Practical history, Work rail, and REAL boot path hardened
+
+The creator tested the workbench UI and found concrete usability failures: the right rail collapsed visually but did not reclaim layout space, the chat history was only a partial recent list, conversations could not be renamed or deleted, and message formatting still felt raw.
+
+Papers now renders basic Markdown in assistant messages, avoids turning ordinary command-result JSON into fake artifacts, exposes a clearer Work rail, and provides real conversation-history management. The left chat-history rail can be hidden, the right Work rail can collapse without leaving a large blank panel, conversation rows show state, and conversations can be renamed or deleted through real native commands. New conversation titles now come from the creator's visible prompt rather than hidden foreground-app context.
+
+The creator also decided future development should happen directly in `REAL` whenever possible to avoid being locked out by a later sync step. The sidebar/history fixes were fast-forwarded into `REAL`, pushed to GitHub, and a release executable was built directly inside `REAL`. A committed `BOOT-PAPERS.cmd` launcher now lives in `REAL`, and the Desktop `Papers` shortcut points at it. The most recent verified app relaunch used the `REAL` release executable.
+
+### 2026-07-07 - Anthropic Skills assessed as a future capability-pack pattern
+
+Anthropic's public Skills repository was assessed as useful inspiration, not as immediate product scope. The valuable pattern is an agent-loadable folder containing task instructions, scripts, and resources. For Papers, this maps better to future agent-facing "skills" or "capability packs" than to user-facing Backpacks. Backpacks remain rooms/lenses, Tools remain executable capabilities, and Skills may later teach the agent repeatable workflows. No skill marketplace, registry, or Backpack-skill contract should be built before the current agent workbench and self-edit proof are reliable.
