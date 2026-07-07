@@ -398,8 +398,13 @@ export function App() {
     !providerStatus ||
     providerDraft.provider !== providerStatus.provider ||
     providerDraft.model !== providerStatus.model;
+  const providerNeedsHermesSetup =
+    providerDirty && !["auto", "nous"].includes(providerDraft.provider);
+  const providerModelLabel = providerDraft.model || "choose a model";
   const providerStatusMessage = providerDirty
-    ? `Unsaved: click Save provider to switch Hermes to ${providerDraft.provider} / ${providerDraft.model}.`
+    ? providerNeedsHermesSetup
+      ? `${providerDraft.provider} is selected, but Papers cannot sign into it yet. Set it up in Hermes first, then enter the exact model name and save.`
+      : `Unsaved: click Save provider to switch Hermes to ${providerDraft.provider} / ${providerModelLabel}.`
     : providerStatus?.message || setupMessage;
   const providerLoginSupported = ["auto", "nous"].includes(providerDraft.provider);
 
@@ -532,12 +537,21 @@ export function App() {
                 value={providerDraft.provider}
                 onChange={(event) => {
                   const provider = event.target.value;
+                  const model =
+                    provider === providerStatus?.provider
+                      ? providerStatus.model
+                      : ["auto", "nous"].includes(provider)
+                        ? "stepfun/step-3.7-flash:free"
+                        : "";
                   setProviderDraft((current) => ({
                     ...current,
                     provider,
+                    model,
                   }));
                   setSetupMessage(
-                    `Selected ${provider}. Save provider to make Hermes use it.`,
+                    ["auto", "nous"].includes(provider)
+                      ? `Selected ${provider}. Save provider to make Hermes use it.`
+                      : `Selected ${provider}. Papers does not manage that login yet; set it up in Hermes and enter its model name.`,
                   );
                 }}
               >
@@ -578,13 +592,17 @@ export function App() {
           </div>
           <div className={`provider-status-card ${providerDirty ? "unsaved" : ""}`}>
             <strong>
-              {providerDraft.provider} / {providerDraft.model}
+              {providerDraft.provider} / {providerModelLabel}
             </strong>
             <small>{providerStatusMessage}</small>
             <div>
               <span>
                 Auth:{" "}
-                {providerStatus?.authenticated
+                {providerDirty
+                  ? providerNeedsHermesSetup
+                    ? "setup needed"
+                    : "not checked until saved"
+                  : providerStatus?.authenticated
                   ? "verified"
                   : providerStatus?.auth_provider
                     ? `signed in as ${providerStatus.auth_provider}`
@@ -635,7 +653,12 @@ export function App() {
             <button
               className="primary"
               onClick={() => void saveProviderSettings()}
-              disabled={providerBusy}
+              disabled={providerBusy || !providerDraft.model.trim()}
+              title={
+                providerDraft.model.trim()
+                  ? "Save provider and model"
+                  : "Enter a model before saving"
+              }
             >
               Save provider
             </button>
