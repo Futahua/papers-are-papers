@@ -162,6 +162,7 @@ export function App() {
   });
   const [providerBusy, setProviderBusy] = useState(false);
   const messagesEnd = useRef<HTMLDivElement>(null);
+  const settingsWasOpen = useRef(false);
   const channel = useMemo(() => new BroadcastChannel("papers-agent"), []);
 
   useEffect(() => {
@@ -209,12 +210,13 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    if (settingsOpen) {
+    if (settingsOpen && !settingsWasOpen.current) {
       void loadProviderStatus().catch((reason) => {
         agent.setError(reason instanceof Error ? reason.message : String(reason));
       });
     }
-  }, [agent, loadProviderStatus, settingsOpen]);
+    settingsWasOpen.current = settingsOpen;
+  }, [loadProviderStatus, settingsOpen]);
 
   const saveProviderSettings = useCallback(async () => {
     setProviderBusy(true);
