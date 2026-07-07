@@ -392,6 +392,14 @@ export function App() {
 
   const connectAction = agent.runtime?.installed ? agent.start : agent.install;
   const isWorking = agent.runState === "planning" || agent.runState === "acting";
+  const providerDirty =
+    !providerStatus ||
+    providerDraft.provider !== providerStatus.provider ||
+    providerDraft.model !== providerStatus.model;
+  const providerStatusMessage = providerDirty
+    ? `Unsaved: click Save provider to switch Hermes to ${providerDraft.provider} / ${providerDraft.model}.`
+    : providerStatus?.message || setupMessage;
+  const providerLoginSupported = ["auto", "nous"].includes(providerDraft.provider);
 
   return (
     <div
@@ -520,12 +528,16 @@ export function App() {
               <span>Provider</span>
               <select
                 value={providerDraft.provider}
-                onChange={(event) =>
+                onChange={(event) => {
+                  const provider = event.target.value;
                   setProviderDraft((current) => ({
                     ...current,
-                    provider: event.target.value,
-                  }))
-                }
+                    provider,
+                  }));
+                  setSetupMessage(
+                    `Selected ${provider}. Save provider to make Hermes use it.`,
+                  );
+                }}
               >
                 {(providerStatus?.known_providers ?? ["nous", "openrouter", "auto"]).map(
                   (provider) => (
@@ -541,12 +553,16 @@ export function App() {
               <input
                 list="papers-model-suggestions"
                 value={providerDraft.model}
-                onChange={(event) =>
+                onChange={(event) => {
+                  const model = event.target.value;
                   setProviderDraft((current) => ({
                     ...current,
-                    model: event.target.value,
-                  }))
-                }
+                    model,
+                  }));
+                  setSetupMessage(
+                    `Selected ${model}. Save provider to make Hermes use it.`,
+                  );
+                }}
                 placeholder="provider/model or model id"
               />
               <datalist id="papers-model-suggestions">
@@ -558,12 +574,11 @@ export function App() {
               </datalist>
             </label>
           </div>
-          <div className="provider-status-card">
+          <div className={`provider-status-card ${providerDirty ? "unsaved" : ""}`}>
             <strong>
-              {providerStatus?.provider ?? providerDraft.provider} /{" "}
-              {providerStatus?.model ?? providerDraft.model}
+              {providerDraft.provider} / {providerDraft.model}
             </strong>
-            <small>{providerStatus?.message || setupMessage}</small>
+            <small>{providerStatusMessage}</small>
             <div>
               <span>
                 Auth:{" "}
@@ -576,27 +591,42 @@ export function App() {
               <span>
                 Hermes: {providerStatus?.runtime_ready ? "ready" : "not ready"}
               </span>
+              {providerDirty && <span>Draft not saved</span>}
+              {providerStatus && (
+                <span>
+                  Saved: {providerStatus.provider} / {providerStatus.model}
+                </span>
+              )}
             </div>
           </div>
           <div className="settings-actions">
             <button
               className="secondary"
               onClick={() => void reconnectProvider()}
-              disabled={providerBusy}
+              disabled={providerBusy || providerDirty || !providerLoginSupported}
+              title={
+                providerDirty
+                  ? "Save the provider first"
+                  : providerLoginSupported
+                    ? "Open provider sign-in"
+                    : "Papers only opens Nous sign-in today"
+              }
             >
-              Sign in / reconnect
+              {providerLoginSupported ? "Sign in / reconnect" : "Hermes setup needed"}
             </button>
             <button
               className="secondary"
               onClick={() => void validateProviderSettings()}
-              disabled={providerBusy}
+              disabled={providerBusy || providerDirty}
+              title={providerDirty ? "Save the provider before validating" : "Validate config"}
             >
               Validate
             </button>
             <button
               className="secondary"
               onClick={() => void testProviderSettings()}
-              disabled={providerBusy || !agent.ready}
+              disabled={providerBusy || !agent.ready || providerDirty}
+              title={providerDirty ? "Save the provider before testing" : "Run a live prompt"}
             >
               Test model
             </button>
