@@ -150,7 +150,7 @@ The AI should eventually:
 - Avoid reinventing agent infrastructure merely for the sake of owning it.
 - Admit uncertainty and ask a useful follow-up when it genuinely does not understand.
 
-**Partial:** Papers has now installed its pinned Hermes Agent 0.18.0 runtime on the creator's machine, reached a healthy loopback server, and installed a hash-verified private Cua Driver 0.7.0. The native authenticated gateway bridge compiles, but its latest release build has not yet been launched because the local elevated-command allowance expired. Nous sign-in, a real model turn, and Windows operation remain unverified, so no documentation may describe the agent as end-to-end working yet.
+**Partial:** Papers has now installed its pinned Hermes Agent 0.18.0 runtime on the creator's machine, reached a healthy loopback server, installed a hash-verified private Cua Driver 0.7.0, and launched the latest release build successfully. The native authenticated gateway bridge compiles, Hermes reports `HERMES_DASHBOARD_READY` from the release launch, and the protocol path has been smoke-tested without browser-origin leakage. Nous sign-in, a real model turn, and Windows operation remain unverified, so no documentation may describe the agent as end-to-end working yet.
 
 ### Data source
 
@@ -402,15 +402,15 @@ What still needs to be designed:
 - Testing and performance budgets.
 - Runtime upgrade compatibility tests.
 
-No future agent should describe the agent as working merely because the bridge compiles. The next proof must launch the latest bridge, complete Nous sign-in, and perform a creator-tested task.
+No future agent should describe the agent as working merely because the bridge compiles or Hermes starts. The next proof must complete Nous sign-in and perform a creator-tested task.
 
 ### Current machine cleanup required
 
-Earlier broad installer tests installed ffmpeg and Cua outside Papers, then registered the elevated `cua-driver-serve` scheduled task. Papers no longer uses either path. The process was stopped and the creator's User PATH is unchanged, but Windows denied task removal without elevation.
+Earlier broad installer tests installed ffmpeg and Cua outside Papers, then registered the elevated `cua-driver-serve` scheduled task. Papers no longer uses either path. The process was stopped and the creator's User PATH is unchanged. A later check did not find the scheduled task, but future agents should re-check before assuming the machine is clean.
 
 Before the next experience test:
 
-- Remove the `cua-driver-serve` scheduled task through one visible, creator-approved UAC prompt.
+- Re-check whether the `cua-driver-serve` scheduled task exists. If it exists, remove it through one visible, creator-approved UAC prompt.
 - Do not delete `%LOCALAPPDATA%\ms-playwright`, `%USERPROFILE%\.cua-driver`, or `%LOCALAPPDATA%\Programs\Cua` automatically; they may be shared. Papers now points Hermes to its own private driver instead.
 - Do not automatically uninstall ffmpeg; it may now be shared by other applications.
 - Verify no Cua task starts at login.
@@ -419,15 +419,14 @@ Before the next experience test:
 
 Exercise the Agent-first vertical slice with the creator:
 
-1. Remove the unintended elevated Cua auto-start task with the creator's visible approval.
-2. Launch the latest release and verify the native Hermes gateway reaches `gateway.ready`.
-3. Sign into Nous Portal.
-4. Verify Hermes and private Computer Use health.
-5. Complete one harmless inspect-only task in a visible Windows program.
-6. Enter Inspect mode and request one visible Papers change.
-7. Build and experience the temporary version.
-8. Reject or keep it based on experience.
-9. If kept, verify the canonical `REAL` commit, GitHub push, version activation, and rollback.
+1. Re-check the old Cua auto-start task and remove it only if still present, with the creator's visible approval.
+2. Sign into Nous Portal.
+3. Verify Hermes and private Computer Use health from inside Papers.
+4. Complete one harmless inspect-only task in a visible Windows program.
+5. Enter Inspect mode and request one visible Papers change.
+6. Build and experience the temporary version.
+7. Reject or keep it based on experience.
+8. If kept, verify the canonical `REAL` commit, GitHub push, version activation, and rollback.
 
 Failures found during this exercise should harden the permanent Agent contract before Backpacks are generated.
 
@@ -682,4 +681,4 @@ Papers installed the pinned Hermes Agent 0.18.0 runtime and reached a healthy lo
 
 Computer Use is now pinned to Cua Driver 0.7.0, verified against the publisher's SHA-256, and extracted privately without PATH changes or auto-start. Hermes gateway traffic now crosses a native Tauri bridge so the per-launch token remains in Rust memory.
 
-The latest release build and automated checks pass. Launch verification, Nous sign-in, and a real task remain pending. One unintended elevated Cua scheduled task created by the superseded installer path still requires a visible creator-approved UAC removal.
+The latest release build and automated checks pass. The release launches and reaches a Hermes ready signal. Nous sign-in and a real task remain pending. The unintended elevated Cua scheduled task created by the superseded installer path was not present on the latest check, but future agents should re-check before any real experience test.
