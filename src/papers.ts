@@ -5,9 +5,15 @@ import type {
   ChangeRecord,
   GatewayEvent,
   InspectSelection,
+  OfflineProviderHint,
   PapersSession,
   PolicyDecision,
+  ProviderCatalogEntry,
+  ProviderEvent,
+  ProviderRuntimeHealth,
+  ProviderState,
   RunState,
+  RuntimeTestResult,
 } from "./types";
 
 export const papers = {
@@ -24,6 +30,55 @@ export const papers = {
     invoke<string>("start_provider_login", { provider }),
   validateAgentProvider: () =>
     invoke<AgentProviderStatus>("validate_agent_provider"),
+  // --- Provider orchestration layer (new) ---
+  listProviders: () => invoke<ProviderCatalogEntry[]>("list_providers"),
+  getProviderState: (providerId: string) =>
+    invoke<ProviderState>("get_provider_state", { providerId }),
+  offlineProviderHint: (providerId: string) =>
+    invoke<OfflineProviderHint>("offline_provider_hint", { providerId }),
+  beginProviderAuth: (providerId: string) =>
+    invoke<ProviderEvent>("begin_provider_auth", { providerId }),
+  pollProviderAuth: (providerId: string, sessionId: string) =>
+    invoke<ProviderEvent>("poll_provider_auth", { providerId, sessionId }),
+  submitProviderAuthCode: (
+    providerId: string,
+    sessionId: string,
+    code: string,
+  ) =>
+    invoke<ProviderEvent>("submit_provider_auth_code", {
+      providerId,
+      sessionId,
+      code,
+    }),
+  saveProviderSecret: (providerId: string, secret: string) =>
+    invoke<ProviderEvent>("save_provider_secret", { providerId, secret }),
+  listProviderModels: (providerId: string) =>
+    invoke<string[]>("list_provider_models", { providerId }),
+  setProviderModelV2: (providerId: string, model: string) =>
+    invoke<ProviderEvent>("set_provider_model_v2", { providerId, model }),
+  disconnectProvider: (providerId: string) =>
+    invoke<void>("disconnect_provider", { providerId }),
+  setActiveProvider: (
+    providerId: string,
+    model: string,
+    force = false,
+  ) =>
+    invoke<ProviderEvent>("set_active_provider", { providerId, model, force }),
+  recordProviderTestResult: (
+    providerId: string,
+    model: string,
+    echo: string | null,
+    error: string | null,
+  ) =>
+    invoke<RuntimeTestResult>("record_provider_test_result", {
+      providerId,
+      model,
+      echo,
+      error,
+    }),
+  openApiKeyWindow: (providerId: string) =>
+    invoke<void>("open_api_key_window", { providerId }),
+  runtimeHealth: () => invoke<ProviderRuntimeHealth>("runtime_health"),
   showCompanion: () => invoke<void>("show_companion"),
   hideCompanion: () => invoke<void>("hide_companion"),
   showMain: () => invoke<void>("show_main"),

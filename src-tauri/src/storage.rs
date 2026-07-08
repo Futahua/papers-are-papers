@@ -75,6 +75,20 @@ impl Database {
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 );
+
+                CREATE TABLE IF NOT EXISTS pending_oauth (
+                    provider_id TEXT PRIMARY KEY,
+                    record_json TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS provider_tests (
+                    provider_id TEXT PRIMARY KEY,
+                    model TEXT NOT NULL,
+                    passed INTEGER NOT NULL,
+                    reason TEXT,
+                    at TEXT NOT NULL
+                );
                 "#,
             )
             .map_err(|error| format!("Could not initialize Papers state: {error}"))?;
@@ -396,6 +410,109 @@ impl Database {
             )
             .map_err(|db_error| db_error.to_string())?;
         Ok(())
+    }
+
+    /// Persist a minimal resume record for an interrupted OAuth flow. Hermes is
+    /// the source of truth later; this is only a hint that a poll is worth
+    /// restarting. The record opaque JSON owned by `provider_service`.
+    pub fn upsert_pending_oauth(&self, provider_id: &str, record_json: &str) -> Result<(), String> {
+        self.connection
+            .lock()
+            .map_err(|_| "State lock failed")?
+            .execute(
+                "INSERT INTO pending_oauth (provider_id, record_json, updated_at)
+                 VALUES (?1, ?2, ?3)
+                 ON CONFLICT(provider_id) DO UPDATE SET
+                    record_json = excluded.record_json,
+                    updated_at = excluded.updated_at",
+                params![provider_id, record_json, Utc::now().to_rfc3339()],
+            )
+            .map_err(|error| error.to_string())?;
+        Ok(())
+    }
+
+    /// Clear any resume record for a provider after its flow finishes or is
+    /// abandoned.
+    pub fn clear_pending_oauth(&self, provider_id: &str) -> Result<(), String> {
+        self.connection
+            .lock()
+            .map_err(|_| "State lock failed")?
+            .execute(
+                "DELETE FROM pending_oauth WHERE provider_id = ?1",
+                [provider_id],
+            )
+            .map_err(|error| error.to_string())?;
+        Ok(())
+    }
+
+    /// Return every resume record (opaque JSON blobs) outstanding. Drives the
+    /// relaunch-time Hermes-checked recovery in `provider_service`.
+    pub fn list_pending_oauth(&self) -> Result<Vec<String>, String> {
+        self.connection
+            .lock()
+            .map_err(|_| "State lock failed")?
+            .prepare("SELECT record_json FROM pending_oauth")
+            .map_err(|error| error.to_string())?
+            .query_map([], |row| row.get::<_, String>(0))
+            .map_err(|error| error.to_string())?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| error.to_string())
+    }
+
+    /// Remember the outcome of a runtime test so models that passed once don't
+    /// need re-running every activation, and failed tests can be surfaced.
+    pub fn upsert_provider_test(
+        &self,
+        provider_id: &str,
+        model: &str,
+        passed: bool,
+        reason: Option<&str>,
+    ) -> Result<(), String> {
+        self.connection
+            .lock()
+            .map_err(|_| "State lock failed")?
+            .execute(
+                "INSERT INTO provider_tests (provider_id, model, passed, reason, at)
+                 VALUES (?1, ?2, ?3, ?4, ?5)
+                 ON CONFLICT(provider_id) DO UPDATE SET
+                    model = excluded.model,
+                    passed = excluded.passed,
+                    reason = excluded.reason,
+                    at = excluded.at",
+                params![
+                    provider_id,
+                    model,
+                    passed as i64,
+                    reason,
+                    Utc::now().to_rfc3339()
+                ],
+            )
+            .map_err(|error| error.to_string())?;
+        Ok(())
+    }
+
+    /// The most recent runtime test outcome for a provider, if any. Used to
+    /// decide whether `set_active_provider` may proceed without forcing.
+    pub fn last_provider_test(
+        &self,
+        provider_id: &str,
+    ) -> Result<Option<(bool, Option<String>, String)>, String> {
+        let connection = self.connection.lock().map_err(|_| "State lock failed")?;
+        match connection.query_row(
+            "SELECT passed, reason, at FROM provider_tests WHERE provider_id = ?1",
+            [provider_id],
+            |row| {
+                Ok((
+                    row.get::<_, i64>(0)? != 0,
+                    row.get::<_, Option<String>>(1)?,
+                    row.get::<_, String>(2)?,
+                ))
+            },
+        ) {
+            Ok(record) => Ok(Some(record)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(error) => Err(error.to_string()),
+        }
     }
 }
 

@@ -51,6 +51,26 @@ impl RuntimeManager {
         })
     }
 
+    /// Cheap-cloned inputs the provider adapter needs to talk to Hermes when it
+    /// is running. Returns the current port + session token (both None when
+    /// Hermes is stopped). Paid only on a provider-settings call, never a hot
+    /// path, so cloning PapersPaths/HermesLock/reqwest::Client here is fine.
+    pub fn provider_adapter_inputs(
+        &self,
+    ) -> (PapersPaths, HermesLock, reqwest::Client, Option<u16>, Option<String>) {
+        let (port, token) = match self.process.lock() {
+            Ok(process) => (process.port, process.session_token.clone()),
+            Err(_) => (None, None),
+        };
+        (
+            self.paths.clone(),
+            self.lock.clone(),
+            self.client.clone(),
+            port,
+            token,
+        )
+    }
+
     pub async fn status(&self) -> BootstrapStatus {
         let executable = self.paths.hermes_executable();
         let installed = executable.is_file();

@@ -44,6 +44,140 @@ export interface AgentProviderStatus {
   message: string;
 }
 
+// --- Provider orchestration layer (new) --------------------------------------
+// Mirrors the Rust structs in provider_catalog/provider_state/provider_runtime.
+// Kept in lockstep; the wizard renders from `ProviderSetupState`, not step
+// numbers + booleans.
+
+export type AuthMethod = "oauth_portal" | "api_key" | "local" | "external";
+export type AuthFlow = "device_code" | "pkce" | "loopback" | "manual_cli";
+export type SupportLevel = "guided_tested" | "recognized_not_guided" | "future";
+
+export interface ProviderCatalogEntry {
+  id: string;
+  label: string;
+  auth_method: AuthMethod;
+  flow?: AuthFlow;
+  supports_model_listing: boolean;
+  supports_disconnect: boolean;
+  supports_live_validation: boolean;
+  supports_runtime_test: boolean;
+  setup_copy: string;
+  docs_hint?: string;
+  support_level: SupportLevel;
+}
+
+export type ProviderSetupState =
+  | { kind: "unconfigured" }
+  | {
+      kind: "auth_in_progress";
+      flow: string;
+      session_id: string;
+      user_code?: string;
+      verification_url?: string;
+      expires_at?: string;
+    }
+  | {
+      kind: "awaiting_pkce_code";
+      session_id: string;
+      expires_at?: string;
+    }
+  | { kind: "configured_no_model" }
+  | { kind: "configured_model_selected" }
+  | { kind: "validation_failed"; message: string }
+  | { kind: "ready_for_test" }
+  | { kind: "runtime_test_passed"; at: string; marker: string }
+  | { kind: "runtime_test_failed"; reason: string; at: string }
+  | { kind: "external_setup_required"; instructions: string; cli_command: string }
+  | { kind: "recognized_not_guided"; hint: string };
+
+export interface ValidationResult {
+  ok: boolean;
+  reachable: boolean;
+  message: string;
+  at: string;
+}
+
+export interface RuntimeTestResult {
+  passed: boolean;
+  marker: string;
+  reason?: string;
+  at: string;
+}
+
+export interface ProviderState {
+  provider_id: string;
+  setup_state: ProviderSetupState;
+  configured: boolean;
+  authenticated: boolean;
+  selected_model?: string;
+  can_disconnect: boolean;
+  last_validation?: ValidationResult;
+  last_runtime_test?: RuntimeTestResult;
+  /** True only when Hermes was reachable when this state was computed. */
+  verified_by_hermes: boolean;
+  message: string;
+}
+
+export interface ProviderRuntimeHealth {
+  provider_id: string;
+  gateway_ok: boolean;
+  reachable: boolean;
+  can_stream: boolean;
+  provider_error?: string;
+  model_error?: string;
+  auth_error?: string;
+  rate_limited: boolean;
+  last_tested_at: string;
+}
+
+/** Offline weak hint read from Hermes-managed files when Hermes is down.
+ *  Always `verified: false` — never a "working" claim. */
+export type CredentialHint = "none" | "present";
+export type OfflineSource = "auth_json" | "env" | "config";
+export interface OfflineProviderHint {
+  provider_id: string;
+  credential_hint: CredentialHint;
+  selected_model?: string;
+  source: OfflineSource;
+  verified: false;
+}
+
+/** Tagged `papers://provider-event` payloads emitted by Rust. */
+export type ProviderEvent =
+  | {
+      kind: "auth_started";
+      provider_id: string;
+      session_id: string;
+      auth_url?: string;
+      user_code?: string;
+      verification_url?: string;
+      needs_code_submit: boolean;
+    }
+  | { kind: "auth_polling"; provider_id: string; session_id: string }
+  | { kind: "auth_approved"; provider_id: string }
+  | { kind: "auth_denied"; provider_id: string; message: string }
+  | { kind: "auth_expired"; provider_id: string }
+  | { kind: "auth_interrupted"; provider_id: string; message: string }
+  | {
+      kind: "key_validated";
+      provider_id: string;
+      ok: boolean;
+      reachable: boolean;
+      message: string;
+    }
+  | { kind: "model_selected"; provider_id: string; model: string }
+  | {
+      kind: "runtime_test_passed";
+      provider_id: string;
+      model: string;
+      marker: string;
+      at: string;
+    }
+  | { kind: "runtime_test_failed"; provider_id: string; reason: string; at: string }
+  | { kind: "active_provider_changed"; provider_id: string; model: string }
+  | { kind: "runtime_health"; health: ProviderRuntimeHealth };
+
 export interface PapersSession {
   id: string;
   hermes_session_id?: string;

@@ -52,6 +52,17 @@ function papersInspectManifest(): Plugin {
 export default defineConfig({
   plugins: [papersInspectManifest(), react()],
   clearScreen: false,
+  // Multi-page: main app + the isolated provider key-entry window.
+  // The key-entry window ships its own minimal bundle so the main app's
+  // React state never holds an API key.
+  build: {
+    rollupOptions: {
+      input: {
+        main: path.resolve(process.cwd(), "index.html"),
+        keyEntry: path.resolve(process.cwd(), "index-key-entry.html"),
+      },
+    },
+  },
   server: {
     port: 1420,
     strictPort: true,

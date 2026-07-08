@@ -343,9 +343,27 @@ The presence of React, HTML, and CSS inside Tauri does not make this a website. 
 - Shows chat history as a real history surface rather than a vague recent list. Conversations can now be renamed or deleted. Deleting a conversation also removes its stored Papers events and approvals.
 - Titles new conversations from the creator's actual prompt instead of the hidden foreground-app context sent to Hermes.
 - Truthfully shows whether Hermes is absent, stopped, starting, ready, or failed.
-- Provides an initial Settings view under Basic for the Agent Provider: sanitized active provider/model, Nous sign-in or reconnect, config validation, and a live model-test prompt through the normal Papers/Hermes bridge.
-- **Important:** Provider Settings is not complete. It is currently a thin config editor, not a full provider setup flow. Non-Nous providers such as OpenAI still require Hermes setup outside Papers until the guided provider setup plan is implemented.
-- Keeps provider credentials under Hermes ownership. Papers reads only sanitized provider/model/auth status and must not send API keys, OAuth tokens, or raw auth files to React.
+- Provides a Settings view under Basic backed by a Papers-native provider orchestration layer (catalog + setup-state machine + runtime health) instead of a thin dropdown. The wizard renders from a `ProviderSetupState` (unconfigured → auth in progress → configured → tested working), not from step numbers + booleans. A separate isolated credential-prompt window handles API-key entry so the main app's React state never holds a key.
+- **Honest provider support status (per-provider capability table):**
+
+  | Provider | Discovery | Auth flow | Model listing | Runtime test | Creator-tested |
+  |---|---|---|---|---|---|
+  | Nous | Yes | OAuth device-code | Yes | Yes | Yes (existing) |
+  | OpenAI Codex | Yes | OAuth device-code | Yes | Yes | No — not yet exercised end-to-end |
+  | OpenRouter | Yes | API key (isolated window) | Yes | Yes | No — not yet exercised end-to-end |
+  | Anthropic | Listed | Recognized, not yet guided | — | — | No |
+  | xAI (API key) | Listed | Recognized, not yet guided | — | — | No |
+  | xAI Grok OAuth | Listed | Recognized, not yet guided | — | — | No |
+  | Google Gemini | Listed | Recognized, not yet guided | — | — | No |
+  | Ollama | Listed | Recognized, not yet guided | — | — | No |
+  | MiniMax OAuth | Listed | Recognized, not yet guided | — | — | No |
+  | Claude Code | Listed | External CLI only (instructions) | — | — | No |
+  | Qwen (CLI) | Listed | External CLI only (instructions) | — | — | No |
+
+  Recognized-not-guided providers surface an honest "recognized, not yet guided" / "external setup required" state in the wizard rather than faking support.
+- First-ever activation is gated behind one passing live runtime test (the provider must echo `PAPERS_PROVIDER_TEST_OK`); there is no previous provider to fall back to, so `active` simply stays unset until a test passes. Provider switching is refused until the new provider passes a test, or the creator forces it.
+- Resumes an interrupted OAuth sign-in on relaunch by checking Hermes' own session state (Hermes is the source of truth; the persisted record is only a hint). Expired/denied/missing sessions are cleared, not silently retried.
+- Keeps provider credentials under Hermes ownership. Papers reads only sanitized provider/model/auth status and must not send API keys, OAuth tokens, or raw auth files to React. The isolated key-entry window reduces exposure (the main app never holds the key); it does not make the JS↔Rust boundary cease to exist. Docs must never claim it is "secure because React never sees it."
 - Can download only the pinned official Hermes installer, verify its SHA-256 hash, and install it into Papers' private application-data directory.
 - Can start and stop `hermes serve` on a random loopback-only port. The native host owns the authenticated WebSocket and forwards frames to React through Tauri events.
 - Implements real Hermes session creation, prompt submission, streaming messages, tool events, clarification responses, approvals, and interruption.
@@ -363,8 +381,9 @@ The presence of React, HTML, and CSS inside Tauri does not make this a website. 
 ### What the current app does not do
 
 - Create, open, save, or switch Backpacks.
-- Present a complete Settings experience beyond the initial provider/model controls and hotkey note.
-- Complete provider setup inside Papers. OpenAI API/Codex, OpenRouter, Anthropic, Gemini, xAI, Ollama, and custom endpoints still need a guided setup flow with key/OAuth, model discovery, validation, test, and save.
+- Present a complete Settings experience beyond the provider orchestration wizard and hotkey note.
+- Guide provider setup for providers beyond Nous, OpenAI Codex, and OpenRouter. Anthropic (PKCE), xAI (API key + loopback OAuth), Gemini, Ollama, MiniMax, and external-CLI providers (Claude Code, Qwen) are recognized in the catalog but intentionally not yet guided; the wizard flags them honestly instead of faking support.
+- Verify the provider orchestration layer end-to-end on the creator's machine. It was implemented and the frontend type-check + production build pass, but the Rust backend was not compiled on this VM (no native C/linker toolchain available) and the live OAuth/turn paths were not exercised with a real Hermes runtime.
 - Start with Windows.
 - Use a system tray.
 - Prove installer install/reinstall/uninstall behavior.
@@ -382,8 +401,9 @@ The following have not yet been end-to-end verified on the creator's machine:
 - Offline GitHub retry and remote-divergence recovery.
 - Pause and Stop interrupting a real in-progress Hermes task promptly.
 - Provider/model switching away from the current default and back, including a bad-model failure that does not corrupt Hermes config.
-- Complete Provider Settings setup for a non-Nous provider through Papers, with no manual terminal setup and no secret leakage.
-- Fresh Windows installer install, reinstall preserving user data, uninstall preserving user data, and launching without the repo folder.
+- Complete Provider Settings setup for a non-Nous provider through Papers, with no manual terminal setup and no secret leakage (OpenAI Codex OAuth and OpenRouter API-key are the first guided slices; not yet creator-tested).
+- The Rust backend compiling and `cargo test` + `npm run tauri build` succeeding on a machine with a working native toolchain. The new modules were written additively and reviewed, but the build was not run on this VM because no C compiler / linker is present.
+- Isolated credential-prompt window open/close/validate behavior under Tauri (the window label is authoritative for the provider id; the URL query is a dev fallback).
 
 Those paths contain real implementation, not canned responses, but they remain **Partial** until exercised with the external runtime and creator.
 

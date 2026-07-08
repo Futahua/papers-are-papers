@@ -1,19 +1,29 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod gateway_proxy;
+mod hermes_provider_adapter;
 mod models;
 mod paths;
 mod policy;
+mod provider_catalog;
+mod provider_runtime;
+mod provider_service;
+mod provider_state;
 mod runtime;
 mod self_edit;
 mod storage;
 
 use gateway_proxy::GatewayProxy;
+use hermes_provider_adapter::HermesProviderAdapter;
 use models::{
     AgentProviderStatus, BootstrapStatus, ChangeRecord, InspectSelection, PapersSession,
     PolicyDecision,
 };
 use paths::PapersPaths;
+use provider_catalog::ProviderCatalogEntry;
+use provider_runtime::ProviderRuntimeHealth;
+use provider_service::ProviderService;
+use provider_state::{OfflineProviderHint, ProviderState, RuntimeTestResult};
 use runtime::RuntimeManager;
 use self_edit::SelfEditService;
 use serde_json::Value;
@@ -27,6 +37,7 @@ struct AppState {
     runtime: RuntimeManager,
     self_edit: SelfEditService,
     gateway: GatewayProxy,
+    providers: ProviderService,
     last_foreground: Mutex<String>,
 }
 
@@ -86,6 +97,204 @@ async fn validate_agent_provider(
     state: State<'_, AppState>,
 ) -> Result<AgentProviderStatus, String> {
     Ok(state.runtime.validate_provider().await)
+}
+
+// --- Provider orchestration layer (new) -------------------------------------
+// These commands speak Papers concepts only; Hermes quirks live in the adapter.
+
+#[tauri::command]
+fn list_providers(state: State<'_, AppState>) -> Vec<ProviderCatalogEntry> {
+    state.providers.list_providers()
+}
+
+#[tauri::command]
+async fn get_provider_state(
+    state: State<'_, AppState>,
+    provider_id: String,
+) -> Result<ProviderState, String> {
+    let (paths, lock, client, port, token) = state.runtime.provider_adapter_inputs();
+    let adapter = HermesProviderAdapter::new(paths, lock, client, port, token);
+    state.providers.state(&adapter, &provider_id).await
+}
+
+#[tauri::command]
+async fn offline_provider_hint(
+    state: State<'_, AppState>,
+    provider_id: String,
+) -> Result<OfflineProviderHint, String> {
+    state.providers.offline_hint(&provider_id)
+}
+
+#[tauri::command]
+async fn begin_provider_auth(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    provider_id: String,
+) -> Result<Value, String> {
+    let (paths, lock, client, port, token) = state.runtime.provider_adapter_inputs();
+    let adapter = HermesProviderAdapter::new(paths, lock, client, port, token);
+    let event = state.providers.begin_auth(&app, &adapter, &provider_id).await?;
+    Ok(serde_json::to_value(&event).map_err(|error| error.to_string())?)
+}
+
+#[tauri::command]
+async fn poll_provider_auth(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    provider_id: String,
+    session_id: String,
+) -> Result<Value, String> {
+    let (paths, lock, client, port, token) = state.runtime.provider_adapter_inputs();
+    let adapter = HermesProviderAdapter::new(paths, lock, client, port, token);
+    let event = state
+        .providers
+        .poll_auth(&app, &adapter, &provider_id, &session_id)
+        .await?;
+    Ok(serde_json::to_value(&event).map_err(|error| error.to_string())?)
+}
+
+#[tauri::command]
+async fn submit_provider_auth_code(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    provider_id: String,
+    session_id: String,
+    code: String,
+) -> Result<Value, String> {
+    let (paths, lock, client, port, token) = state.runtime.provider_adapter_inputs();
+    let adapter = HermesProviderAdapter::new(paths, lock, client, port, token);
+    let event = state
+        .providers
+        .submit_auth_code(&app, &adapter, &provider_id, &session_id, &code)
+        .await?;
+    Ok(serde_json::to_value(&event).map_err(|error| error.to_string())?)
+}
+
+#[tauri::command]
+async fn save_provider_secret(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    provider_id: String,
+    secret: String,
+) -> Result<Value, String> {
+    let (paths, lock, client, port, token) = state.runtime.provider_adapter_inputs();
+    let adapter = HermesProviderAdapter::new(paths, lock, client, port, token);
+    let result = state
+        .providers
+        .save_secret(&app, &adapter, &provider_id, &secret)
+        .await?;
+    Ok(serde_json::to_value(&result).map_err(|error| error.to_string())?)
+}
+
+#[tauri::command]
+async fn list_provider_models(
+    state: State<'_, AppState>,
+    provider_id: String,
+) -> Result<Vec<String>, String> {
+    let (paths, lock, client, port, token) = state.runtime.provider_adapter_inputs();
+    let adapter = HermesProviderAdapter::new(paths, lock, client, port, token);
+    state.providers.list_models(&adapter, &provider_id).await
+}
+
+#[tauri::command]
+async fn set_provider_model_v2(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    provider_id: String,
+    model: String,
+) -> Result<Value, String> {
+    let (paths, lock, client, port, token) = state.runtime.provider_adapter_inputs();
+    let adapter = HermesProviderAdapter::new(paths, lock, client, port, token);
+    let event = state
+        .providers
+        .set_model(&app, &adapter, &provider_id, &model)
+        .await?;
+    Ok(serde_json::to_value(&event).map_err(|error| error.to_string())?)
+}
+
+#[tauri::command]
+async fn disconnect_provider(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    provider_id: String,
+) -> Result<(), String> {
+    let (paths, lock, client, port, token) = state.runtime.provider_adapter_inputs();
+    let adapter = HermesProviderAdapter::new(paths, lock, client, port, token);
+    state
+        .providers
+        .disconnect(&app, &adapter, &provider_id)
+        .await
+}
+
+#[tauri::command]
+async fn set_active_provider(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    provider_id: String,
+    model: String,
+    force: bool,
+) -> Result<Value, String> {
+    let (paths, lock, client, port, token) = state.runtime.provider_adapter_inputs();
+    let adapter = HermesProviderAdapter::new(paths, lock, client, port, token);
+    let last_test = state
+        .database
+        .last_provider_test(&provider_id)
+        .ok()
+        .flatten()
+        .map(|(passed, reason, at)| RuntimeTestResult {
+            passed,
+            marker: provider_runtime::TEST_MARKER.to_string(),
+            reason,
+            at,
+        });
+    let event = state
+        .providers
+        .activate(&app, &adapter, &provider_id, &model, force, last_test.as_ref())
+        .await?;
+    Ok(serde_json::to_value(&event).map_err(|error| error.to_string())?)
+}
+
+#[tauri::command]
+fn record_provider_test_result(
+    state: State<'_, AppState>,
+    provider_id: String,
+    model: String,
+    echo: Option<String>,
+    error: Option<String>,
+) -> RuntimeTestResult {
+    let result = state
+        .providers
+        .record_runtime_test(&provider_id, &model, echo.as_deref(), error.as_deref());
+    let _ = state.database.upsert_provider_test(
+        &provider_id,
+        &model,
+        result.passed,
+        result.reason.as_deref(),
+    );
+    result
+}
+
+#[tauri::command]
+async fn open_api_key_window(app: AppHandle, provider_id: String) -> Result<(), String> {
+    open_credential_window(&app, provider_id, ApiKeyPurpose::Entry)
+}
+
+#[tauri::command]
+fn runtime_health() -> ProviderRuntimeHealth {
+    // The live probe runs through the existing agent bridge (useAgent) on the
+    // UI side; this returns a default record the UI fills in. Kept as a stable
+    // command so the Work rail can request provider health later.
+    ProviderRuntimeHealth {
+        provider_id: String::new(),
+        gateway_ok: false,
+        reachable: false,
+        can_stream: false,
+        provider_error: None,
+        model_error: None,
+        auth_error: None,
+        rate_limited: false,
+        last_tested_at: chrono::Utc::now().to_rfc3339(),
+    }
 }
 
 #[tauri::command]
@@ -278,11 +487,13 @@ fn main() {
     let runtime =
         RuntimeManager::new(paths.clone()).expect("Papers could not load the Hermes lock");
     let self_edit = SelfEditService::new(paths, database.clone());
+    let providers = ProviderService::new(database.clone());
     let state = AppState {
         database,
         runtime,
         self_edit,
         gateway: GatewayProxy::default(),
+        providers,
         last_foreground: Mutex::new(String::new()),
     };
 
@@ -307,7 +518,7 @@ fn main() {
                 .build(),
         )
         .manage(state)
-        .setup(|app| {
+.setup(|app| {
             if let Err(error) = app.global_shortcut().register(PAPERS_GLOBAL_SHORTCUT) {
                 eprintln!(
                     "Papers could not register {PAPERS_GLOBAL_SHORTCUT} because another app already owns it: {error}"
@@ -322,6 +533,7 @@ fn main() {
                     window.set_title("PAPERS PREVIEW — TEMPORARY VERSION")?;
                 }
             }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -329,11 +541,25 @@ fn main() {
             install_hermes,
             start_hermes,
             stop_hermes,
-            start_nous_login,
+start_nous_login,
             agent_provider_status,
             set_agent_provider,
             start_provider_login,
             validate_agent_provider,
+            list_providers,
+            get_provider_state,
+            offline_provider_hint,
+            begin_provider_auth,
+            poll_provider_auth,
+            submit_provider_auth_code,
+            save_provider_secret,
+            list_provider_models,
+            set_provider_model_v2,
+            disconnect_provider,
+            set_active_provider,
+            record_provider_test_result,
+            open_api_key_window,
+            runtime_health,
             gateway_connect,
             gateway_send,
             gateway_disconnect,
@@ -360,12 +586,60 @@ fn main() {
         .build(tauri::generate_context!())
         .expect("Papers could not start");
 
+    // Resume any interrupted OAuth sign-ins on relaunch. Hermes is the
+    // source of truth; the persisted record only hints that a poll is
+    // worth restarting. Best-effort: never blocks app startup.
+    let handle = app.handle().clone();
+    tauri::async_runtime::spawn(async move {
+        let state = handle.state::<AppState>();
+        let (paths, lock, client, port, token) = state.runtime.provider_adapter_inputs();
+        let adapter = HermesProviderAdapter::new(paths, lock, client, port, token);
+        let _ = state.providers.resume_pending(&handle, &adapter).await;
+    });
+
     app.run(|app_handle, event| {
         if matches!(event, RunEvent::Exit) {
             let _ = app_handle.state::<AppState>().gateway.disconnect();
             let _ = app_handle.state::<AppState>().runtime.stop();
         }
     });
+}
+
+/// Purpose of the isolated credential window, so the frontend route knows
+/// which minimal form to render. Kept an enum (not a bool) so a future
+/// "reveal/confirm" flow slots in without changing the command signature.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ApiKeyPurpose {
+    Entry,
+}
+
+/// Opens a small isolated window for entering a provider API key. The window
+/// loads a dedicated Vite entry (`index-key-entry.html`) so the main app's
+/// React state never sees the typed secret. The window posts the key straight
+/// to `save_provider_secret` (main app emit) and self-closes on success.
+fn open_credential_window(
+    app: &AppHandle,
+    provider_id: String,
+    purpose: ApiKeyPurpose,
+) -> Result<(), String> {
+    let label = format!("key-entry/{provider_id}");
+    if app.get_webview_window(&label).is_some() {
+        return Err("A key entry window is already open. Finish or cancel it first.".into());
+    }
+    let url = format!(
+        "index-key-entry.html?provider={provider_id}&purpose={}",
+        match purpose {
+            ApiKeyPurpose::Entry => "entry",
+        }
+    );
+    tauri::WebviewWindowBuilder::new(app, &label, tauri::WebviewUrl::App(url.into()))
+        .title("Enter provider key — Papers")
+        .inner_size(460.0, 280.0)
+        .resizable(false)
+        .center()
+        .build()
+        .map_err(|error| format!("Could not open the key entry window: {error}"))?;
+    Ok(())
 }
 
 fn position_companion(window: &tauri::WebviewWindow) {
