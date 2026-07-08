@@ -1,5 +1,9 @@
 use std::path::PathBuf;
 
+/// Hardcoded fallback for the creator's dev machine. Override with
+/// $PAPERS_REPO_PATH on any other machine. Used only for Git operations in
+/// self_edit (rev-parse, push, worktree, rollback). NEVER use this as a
+/// runtime process working directory — use `runtime` for that.
 pub const DEFAULT_REPOSITORY: &str =
     r"C:\This is Minh\LapSlop brotherhood\Programs\Papers are papers\REAL";
 
@@ -13,6 +17,10 @@ pub struct PapersPaths {
     pub staging: PathBuf,
     pub versions: PathBuf,
     pub logs: PathBuf,
+    /// Git repository root used only by the self-edit/builder flow. Set via
+    /// $PAPERS_REPO_PATH at runtime, or falls back to DEFAULT_REPOSITORY.
+    /// NEVER use this as a process working directory — the installed Hermes
+    /// runtime launches from `runtime`, not from here.
     pub canonical_repo: PathBuf,
 }
 
