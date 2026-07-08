@@ -51,5 +51,6 @@ if not exist "%PAPERS_EXE%" (
 )
 
 echo Starting rebuilt REAL app...
+set "PAPERS_REPO_PATH=%PAPERS_REAL%"
 start "" "%PAPERS_EXE%"
 exit /b 0

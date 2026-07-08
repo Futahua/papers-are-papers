@@ -1961,3 +1961,83 @@ input:focus-visible {
     transform: rotate(360deg);
   }
 }
+
+/* Custom model picker (replaces native <datalist>) */
+
+.model-picker {
+  position: relative;
+  width: 100%;
+}
+
+.model-picker-trigger {
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+  min-height: 34px;
+  border: 1px solid var(--line-strong);
+  border-radius: 9px;
+  background: white;
+  overflow: hidden;
+}
+
+.model-picker-trigger input {
+  flex: 1;
+  min-width: 0;
+  padding: 0 10px;
+  border: none;
+  background: transparent;
+  font-size: 12px;
+  font-family: var(--mono);
+}
+
+.model-picker-trigger input:focus {
+  outline: none;
+}
+
+.picker-toggle {
+  display: grid;
+  width: 32px;
+  border: none;
+  border-left: 1px solid var(--line);
+  background: transparent;
+  cursor: pointer;
+  place-items: center;
+  color: var(--muted);
+}
+
+.model-picker-menu {
+  position: absolute;
+  z-index: 10;
+  top: 100%;
+  left: 0;
+  right: 0;
+  max-height: 200px;
+  margin-top: 2px;
+  border: 1px solid var(--line-strong);
+  border-radius: 9px;
+  background: var(--raised-strong);
+  box-shadow: var(--shadow);
+  overflow-y: auto;
+}
+
+.model-picker-menu button {
+  display: block;
+  width: 100%;
+  padding: 7px 12px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 11px;
+  font-family: var(--mono);
+  text-align: left;
+  color: var(--ink);
+}
+
+.model-picker-menu button:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.model-picker-menu button.selected {
+  background: rgba(0, 0, 0, 0.07);
+  font-weight: 600;
+}

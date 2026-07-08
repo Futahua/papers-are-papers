@@ -547,6 +547,20 @@ impl Database {
             Err(error) => Err(error.to_string()),
         }
     }
+
+    /// Clear the persisted runtime test result for a provider. Used when the
+    /// creator changes the model — the old test is no longer valid.
+    pub fn clear_provider_test(&self, provider_id: &str) -> Result<(), String> {
+        self.connection
+            .lock()
+            .map_err(|_| "State lock failed")?
+            .execute(
+                "DELETE FROM provider_tests WHERE provider_id = ?1",
+                [provider_id],
+            )
+            .map_err(|error| error.to_string())?;
+        Ok(())
+    }
 }
 
 fn sanitized_event_payload(event_type: &str, event: &Value) -> Option<Value> {

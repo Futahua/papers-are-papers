@@ -322,28 +322,31 @@ impl ProviderService {
         Ok(result)
     }
 
-    /// `list_provider_models(provider_id)` — real model list from Hermes when
-    /// authenticated. Falls back to the catalog hint when offline.
+    /// `list_provider_models(provider_id)` — real model list from Hermes. Calls
+    /// the adapter's dedicated `list_models()` endpoint (not the snapshot). Falls
+    /// back to a multi-model curated hint only on failure; never shows a
+    /// single placeholder model for guided providers.
     pub async fn list_models(
         &self,
         adapter: &HermesProviderAdapter,
         provider_id: &str,
     ) -> Result<Vec<String>, String> {
-        let snapshot = adapter.snapshot(provider_id).await?;
-        if !snapshot.available_models.is_empty() {
-            return Ok(snapshot.available_models);
+        match adapter.list_models(provider_id).await {
+            Ok(models) if !models.is_empty() => {
+                eprintln!("[provider_service] list_models({provider_id}): Hermes returned {} models", models.len());
+                Ok(models)
+            }
+            Ok(_) => {
+                let fallback = curated_fallback(provider_id);
+                eprintln!("[provider_service] list_models({provider_id}): Hermes returned empty, using fallback ({} models)", fallback.len());
+                Ok(fallback)
+            }
+            Err(e) => {
+                let fallback = curated_fallback(provider_id);
+                eprintln!("[provider_service] list_models({provider_id}): Hermes error '{}', using fallback ({} models)", e, fallback.len());
+                Ok(fallback)
+            }
         }
-        // Offline / not-yet-authenticated fallback: the tutor free model for
-        // Nous, empty otherwise. Honest — the UI labids these as suggestions.
-        let entry = provider_catalog::find(provider_id);
-        let fallback = match provider_id {
-            "nous" => vec!["stepfun/step-3.7-flash:free".to_string()],
-            "openai-codex" => vec!["o4-mini".to_string()],
-            "openrouter" => vec!["openrouter/auto".to_string()],
-            _ => Vec::new(),
-        };
-        let _ = entry;
-        Ok(fallback)
     }
 
     /// `set_provider_model(provider_id, model)` — writes Hermes config but does
@@ -363,6 +366,10 @@ impl ProviderService {
         if model.len() > 220 || model.contains('\n') || model.contains('\r') {
             return Err("Model names must be a single short line.".into());
         }
+        // Model changed: the old runtime test is no longer valid for the new
+        // model. Clear it BEFORE the adapter call so it's always cleared
+        // regardless of whether Hermes accepts the model assignment.
+        let _ = self.db.clear_provider_test(provider_id);
         adapter.set_model(provider_id, model).await?;
         let event = ProviderEvent::ModelSelected {
             provider_id: provider_id.to_string(),
@@ -560,39 +567,6 @@ fn validate_secret_shape(secret: &str) -> Result<(), String> {
 }
 
 /// Where Hermes' `auth.json` would live for a give provider id hint. Only used
-/// for offline credential-presence detection and never reads token contents.
-fn adapter_auth_json_for(_provider_id: &str) -> std::path::PathBuf {
-    // Hermes_home + auth.json. The caller doesn't have paths here but this
-    // helper is only used for the credential_hint computation; the service
-    // construct recomputes presence from the real path when it has one. We
-    // keep best-effort resolution via the env-set PAPERS_DATA_HOME.
-    let root = std::env::var_os("PAPERS_DATA_HOME")
-        .map(std::path::PathBuf::from)
-        .or_else(|| dirs::data_local_dir().map(|p| p.join("Papers")))
-        .unwrap_or_else(|| std::path::PathBuf::from("."));
-    root.join("data").join("hermes").join("auth.json")
-}
-
-/// Best-effort `.env` presence check at the Hermes_home location. Never claims
-/// validity; only presence/non-empty value.
-fn env_present_anywhere(env_var: &str) -> bool {
-    let root = std::env::var_os("PAPERS_DATA_HOME")
-        .map(std::path::PathBuf::from)
-        .or_else(|| dirs::data_local_dir().map(|p| p.join("Papers")))
-        .unwrap_or_else(|| std::path::PathBuf::from("."));
-    let path = root.join("data").join("hermes").join(".env");
-    let Ok(bytes) = std::fs::read_to_string(&path) else {
-        return false;
-    };
-    let needle = format!("{env_var}=");
-    bytes.lines().any(|line| {
-        let trimmed = line.trim_start();
-        trimmed.starts_with(&needle)
-            && trimmed[needle.len()..].trim() != ""
-            && !trimmed.starts_with(&format!("{env_var}=#"))
-    })
-}
-
 // Small extension trait so the runtime-test result can carry provider/model
 // context without leaking into the public `RuntimeTestResult` shape.
 trait PipeFor {
@@ -605,5 +579,33 @@ impl PipeFor for RuntimeTestResult {
         // context is attached by the caller via the event. No-op kept so the
         // call site reads as a fluent step rather than a bare constructor.
         self
+    }
+}
+/// Multi-model fallback curated from Hermes' model catalog. Only used when
+/// Hermes is unreachable or the model-list endpoint fails. Guided providers
+/// get a real multi-model list, never a single placeholder.
+fn curated_fallback(provider_id: &str) -> Vec<String> {
+    match provider_id {
+        "nous" => vec![
+            "anthropic/claude-fable-5".into(),
+            "anthropic/claude-opus-4.8".into(),
+            "anthropic/claude-sonnet-5".into(),
+            "anthropic/claude-haiku-4.5".into(),
+            "openai/gpt-5.5".into(),
+            "openai/gpt-5.5-pro".into(),
+            "google/gemini-3.5-flash".into(),
+            "deepseek/deepseek-v4-pro".into(),
+            "qwen/qwen3.7-max".into(),
+            "moonshotai/kimi-k2.6".into(),
+            "minimax/minimax-m3".into(),
+            "stepfun/step-3.7-flash".into(),
+        ],
+        "openai-codex" => vec!["o4-mini".into(), "gpt-4.1".into()],
+        "openrouter" => vec![
+            "openrouter/auto".into(),
+            "anthropic/claude-opus-4.8".into(),
+            "openai/gpt-5.5".into(),
+        ],
+        _ => Vec::new(),
     }
 }

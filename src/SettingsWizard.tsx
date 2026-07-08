@@ -81,11 +81,25 @@ export function SettingsWizard({
   const [pkceCode, setPkceCode] = useState("");
   const [onlineHint, setOnlineHint] = useState("");
   const [testing, setTesting] = useState(false);
+  const [modelMenuOpen, setModelMenuOpen] = useState(false);
+  const [modelQuery, setModelQuery] = useState("");
   const pollRef = useRef<(() => void) | null>(null);
 
   const entry = useMemo(
     () => catalog.find((item) => item.id === providerId) ?? null,
     [catalog, providerId],
+  );
+
+  const filteredModels = useMemo(() => {
+    const q = modelQuery.trim().toLowerCase();
+    if (!q) return models;
+    return models.filter((m) => m.toLowerCase().includes(q));
+  }, [models, modelQuery]);
+
+  const selectedNotInList = !!(
+    state?.selected_model &&
+    models.length > 0 &&
+    !models.includes(state.selected_model)
   );
 
   const refresh = useCallback(async () => {
@@ -532,18 +546,56 @@ export function SettingsWizard({
             <div className="model-section">
               <label className="model-input">
                 <span>Model</span>
-                <input
-                  list="papers-model-suggestions"
-                  value={modelDraft}
-                  onChange={(event) => setModelDraft(event.target.value)}
-                  placeholder="provider/model or model id"
-                />
-                <datalist id="papers-model-suggestions">
-                  {models.map((model) => (
-                    <option value={model} key={model} />
-                  ))}
-                </datalist>
+                <div className="model-picker">
+                  <div className="model-picker-trigger">
+                    <input
+                      value={modelDraft}
+                      onFocus={() => {
+                        setModelQuery("");
+                        setModelMenuOpen(true);
+                      }}
+                      onChange={(event) => {
+                        setModelDraft(event.target.value);
+                        setModelQuery(event.target.value);
+                        setModelMenuOpen(true);
+                      }}
+                      onBlur={() => window.setTimeout(() => setModelMenuOpen(false), 150)}
+                      placeholder="provider/model or model id"
+                    />
+                    <button
+                      type="button"
+                      className="picker-toggle"
+                      onClick={() => setModelMenuOpen((v) => !v)}
+                    >
+                      <ChevronDown size={14} />
+                    </button>
+                  </div>
+                  {modelMenuOpen && filteredModels.length > 0 && (
+                    <div className="model-picker-menu">
+                      {filteredModels.map((model) => (
+                        <button
+                          type="button"
+                          key={model}
+                          className={model === modelDraft ? "selected" : ""}
+                          onMouseDown={(event) => {
+                            event.preventDefault();
+                            setModelDraft(model);
+                            setModelQuery(model);
+                            setModelMenuOpen(false);
+                          }}
+                        >
+                          {model}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </label>
+              {selectedNotInList && (
+                <small className="settings-footnote warn">
+                  Current saved model "{state?.selected_model ?? ""}" isn't in the fetched provider catalog.
+                </small>
+              )}
               <button
                 className="secondary"
                 onClick={() => void saveModel()}
