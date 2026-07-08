@@ -365,7 +365,7 @@ The presence of React, HTML, and CSS inside Tauri does not make this a website. 
 - Resumes an interrupted OAuth sign-in on relaunch by checking Hermes' own session state (Hermes is the source of truth; the persisted record is only a hint). Expired/denied/missing sessions are cleared, not silently retried.
 - Keeps provider credentials under Hermes ownership. Papers reads only sanitized provider/model/auth status and must not send API keys, OAuth tokens, or raw auth files to React. The isolated key-entry window reduces exposure (the main app never holds the key); it does not make the JS↔Rust boundary cease to exist. Docs must never claim it is "secure because React never sees it."
 - Can download only the pinned official Hermes installer, verify its SHA-256 hash, and install it into Papers' private application-data directory.
-- Can start and stop `hermes serve` on a random loopback-only port. The native host owns the authenticated WebSocket and forwards frames to React through Tauri events.
+- Can start and stop `hermes serve` on a random loopback-only port. The native host owns the authenticated WebSocket and forwards frames to React through Tauri events. Hermes launches with `HERMES_DASHBOARD_TUI=1` so the `/api/ws` JSON-RPC sidecar is enabled (without that env var Hermes closes the WebSocket immediately). Hermes also launches with its working directory set to the installed runtime path (not the repository checkout) so it starts correctly on any machine, regardless of where the source lives.
 - Implements real Hermes session creation, prompt submission, streaming messages, tool events, clarification responses, approvals, and interruption.
 - Opens a compact companion through `Ctrl+Alt+Q` when that shortcut is available; the companion can target the current window, accept a request, pause, stop, and expand Papers.
 - Does not automatically open the companion when the creator submits a normal prompt inside the main Papers window.
@@ -383,7 +383,7 @@ The presence of React, HTML, and CSS inside Tauri does not make this a website. 
 - Create, open, save, or switch Backpacks.
 - Present a complete Settings experience beyond the provider orchestration wizard and hotkey note.
 - Guide provider setup for providers beyond Nous, OpenAI Codex, and OpenRouter. Anthropic (PKCE), xAI (API key + loopback OAuth), Gemini, Ollama, MiniMax, and external-CLI providers (Claude Code, Qwen) are recognized in the catalog but intentionally not yet guided; the wizard flags them honestly instead of faking support.
-- Verify the provider orchestration layer end-to-end on the creator's machine. It was implemented and the frontend type-check + production build pass, but the Rust backend was not compiled on this VM (no native C/linker toolchain available) and the live OAuth/turn paths were not exercised with a real Hermes runtime.
+- Verify the provider orchestration layer end-to-end on the creator's main machine. The Rust backend now compiles cleanly on a machine with MSVC Build Tools (cargo check passes with 0 errors, cargo test passes 21/21), the frontend passes tsc + vite build, and the Tauri NSIS installer is produced. However, the live OAuth/turn paths have not been exercised end-to-end with a real Hermes runtime by the creator, and several known UX rough edges remain in the settings wizard layout.
 - Start with Windows.
 - Use a system tray.
 - Prove installer install/reinstall/uninstall behavior.
