@@ -39,6 +39,8 @@ const setupStateHeadline = (state: ProviderSetupState): string => {
       return "Not set up yet";
     case "auth_in_progress":
       return "Waiting for browser sign-in";
+    case "auth_pending_resume":
+      return "Previous sign-in pending resume";
     case "awaiting_pkce_code":
       return "Paste the callback code";
     case "configured_no_model":
@@ -343,8 +345,13 @@ export function SettingsWizard({
   const renderKeyEntry = entry?.auth_method === "api_key";
   const isPkce = state?.setup_state.kind === "awaiting_pkce_code";
   const canActivate =
-    state?.setup_state.kind === "runtime_test_passed" ||
-    state?.setup_state.kind === "runtime_test_failed";
+    state?.setup_state.kind === "runtime_test_passed";
+
+  // Recovery actions for a failed runtime test.
+  const isFailedTest = state?.setup_state.kind === "runtime_test_failed";
+  // Configured + model + never tested → show Run test only.
+  const isUntestedConfigured =
+    state?.setup_state.kind === "configured_model_selected";
 
   return (
     <section className="settings-panel" role="dialog" aria-modal="true">
@@ -511,6 +518,13 @@ export function SettingsWizard({
             </form>
           )}
 
+          {state && state.setup_state.kind === "auth_pending_resume" && (
+            <div className="test-ok">
+              <RefreshCw size={14} /> A sign-in was in progress. Start Hermes to
+              resume or clear this session.
+            </div>
+          )}
+
           {(state.setup_state.kind === "configured_no_model" ||
             state.setup_state.kind === "configured_model_selected" ||
             state.setup_state.kind === "runtime_test_passed" ||
@@ -563,13 +577,26 @@ export function SettingsWizard({
             </p>
           )}
 
+          {isFailedTest && state && state.setup_state.kind === "runtime_test_failed" && (
+            <div className="inline-error">
+              Test failed: {state.setup_state.reason}. Try a different model or
+              re-enter the key.
+            </div>
+          )}
+
+          {isFailedTest && (
+            <button className="primary" onClick={() => void activate()} disabled={busy}>
+              Force activate {providerId} (unsafe)
+            </button>
+          )}
+
           {canActivate && (
             <button
               className="primary"
               onClick={() => void activate()}
               disabled={busy}
             >
-              Activate {providerId}
+              <Check size={14} /> Activate {providerId}
             </button>
           )}
 

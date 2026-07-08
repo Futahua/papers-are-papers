@@ -5,6 +5,7 @@
 
 use crate::paths::PapersPaths;
 use crate::models::HermesLock;
+use crate::provider_state::{CredentialHint, OfflineProviderHint, OfflineSource};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -508,6 +509,44 @@ impl HermesProviderAdapter {
         bytes
             .lines()
             .any(|line| line.trim_start().starts_with(&needle) && line[needle.len()..].trim() != "" && !line.trim_start().starts_with(&format!("{env_var}='#")))
+    }
+
+    /// Read-only offline credential hint for one provider. Never implies verified/
+    /// authenticated/healthy — only `credential_hint: Present|None` + unverified.
+    /// Exists so provider_service does not reconstruct Hermes file paths itself.
+    pub fn offline_hint(&self, provider_id: &str) -> OfflineProviderHint {
+        let entry = crate::provider_catalog::find(provider_id);
+        let selected_model = self.read_selected_model(provider_id);
+
+        let (credential_hint, source) = match entry.as_ref().map(|e| e.auth_method) {
+            Some(crate::provider_catalog::AuthMethod::OauthPortal) => {
+                let present =
+                    self.read_auth_json_oauth(provider_id).unwrap_or(false);
+                (
+                    if present { CredentialHint::Present } else { CredentialHint::None },
+                    OfflineSource::AuthJson,
+                )
+            }
+            Some(crate::provider_catalog::AuthMethod::ApiKey) => {
+                let present = entry
+                    .and_then(|e| e.api_key_descriptor())
+                    .map(|desc| self.env_present(desc.env_var))
+                    .unwrap_or(false);
+                (
+                    if present { CredentialHint::Present } else { CredentialHint::None },
+                    OfflineSource::Env,
+                )
+            }
+            _ => (CredentialHint::None, OfflineSource::Config),
+        };
+
+        OfflineProviderHint {
+            provider_id: provider_id.to_string(),
+            credential_hint,
+            selected_model,
+            source,
+            verified: false,
+        }
     }
 }
 

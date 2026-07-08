@@ -78,7 +78,7 @@ export const papers = {
     }),
   openApiKeyWindow: (providerId: string) =>
     invoke<void>("open_api_key_window", { providerId }),
-  runtimeHealth: () => invoke<ProviderRuntimeHealth>("runtime_health"),
+  runtimeHealth: () => invoke<RuntimeTestResult | null>("latest_runtime_test_state"),
   showCompanion: () => invoke<void>("show_companion"),
   hideCompanion: () => invoke<void>("hide_companion"),
   showMain: () => invoke<void>("show_main"),

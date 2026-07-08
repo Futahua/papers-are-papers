@@ -445,6 +445,39 @@ impl Database {
         Ok(())
     }
 
+    /// Return the resume record for one provider, if one is currently persisted.
+    /// Returns (session_id, flow, needs_code_submit) deserialized from the
+    /// stored JSON. Used by provider_state derivation to surface in-progress
+    /// auth state after relaunch.
+    pub fn get_pending_oauth_for_provider(
+        &self,
+        provider_id: &str,
+    ) -> Result<Option<(String, String, bool)>, String> {
+        let connection = self.connection.lock().map_err(|_| "State lock failed")?;
+        let record_json: Option<String> = connection
+            .query_row(
+                "SELECT record_json FROM pending_oauth WHERE provider_id = ?1",
+                [provider_id],
+                |row| row.get(0),
+            )
+            .ok();
+        match record_json {
+            Some(json) => {
+                let val: serde_json::Value =
+                    serde_json::from_str(&json).map_err(|e| e.to_string())?;
+                let session_id = val["session_id"].as_str().unwrap_or("").to_string();
+                let flow = val["flow"].as_str().unwrap_or("").to_string();
+                let needs_code_submit = val["needs_code_submit"].as_bool().unwrap_or(false);
+                if session_id.is_empty() {
+                    Ok(None)
+                } else {
+                    Ok(Some((session_id, flow, needs_code_submit)))
+                }
+            }
+            None => Ok(None),
+        }
+    }
+
     /// Return every resume record (opaque JSON blobs) outstanding. Drives the
     /// relaunch-time Hermes-checked recovery in `provider_service`.
     pub fn list_pending_oauth(&self) -> Result<Vec<String>, String> {

@@ -21,7 +21,6 @@ use models::{
 };
 use paths::PapersPaths;
 use provider_catalog::ProviderCatalogEntry;
-use provider_runtime::ProviderRuntimeHealth;
 use provider_service::ProviderService;
 use provider_state::{OfflineProviderHint, ProviderState, RuntimeTestResult};
 use runtime::RuntimeManager;
@@ -122,7 +121,9 @@ async fn offline_provider_hint(
     state: State<'_, AppState>,
     provider_id: String,
 ) -> Result<OfflineProviderHint, String> {
-    state.providers.offline_hint(&provider_id)
+    let (paths, lock, client, port, token) = state.runtime.provider_adapter_inputs();
+    let adapter = HermesProviderAdapter::new(paths, lock, client, port, token);
+    state.providers.offline_hint(&adapter, &provider_id)
 }
 
 #[tauri::command]
@@ -279,22 +280,26 @@ async fn open_api_key_window(app: AppHandle, provider_id: String) -> Result<(), 
     open_credential_window(&app, provider_id, ApiKeyPurpose::Entry)
 }
 
+/// Latest-known runtime-test truth, not a live health layer. Returns the
+/// persisted test outcome for the given provider. Honest: this is NOT a live
+/// provider-health subsystem — it is a replay of what the last test recorded.
 #[tauri::command]
-fn runtime_health() -> ProviderRuntimeHealth {
-    // The live probe runs through the existing agent bridge (useAgent) on the
-    // UI side; this returns a default record the UI fills in. Kept as a stable
-    // command so the Work rail can request provider health later.
-    ProviderRuntimeHealth {
-        provider_id: String::new(),
-        gateway_ok: false,
-        reachable: false,
-        can_stream: false,
-        provider_error: None,
-        model_error: None,
-        auth_error: None,
-        rate_limited: false,
-        last_tested_at: chrono::Utc::now().to_rfc3339(),
-    }
+fn latest_runtime_test_state(
+    state: State<'_, AppState>,
+    provider_id: String,
+) -> Result<Option<RuntimeTestResult>, String> {
+    state
+        .database
+        .last_provider_test(&provider_id)
+        .map(|opt| {
+            opt.map(|(passed, reason, at)| RuntimeTestResult {
+                passed,
+                marker: provider_runtime::TEST_MARKER.to_string(),
+                reason,
+                at,
+            })
+        })
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -559,7 +564,7 @@ start_nous_login,
             set_active_provider,
             record_provider_test_result,
             open_api_key_window,
-            runtime_health,
+            latest_runtime_test_state,
             gateway_connect,
             gateway_send,
             gateway_disconnect,

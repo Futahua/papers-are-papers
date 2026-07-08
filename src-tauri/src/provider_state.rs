@@ -13,6 +13,14 @@ use crate::hermes_provider_adapter::HermesAuthSnapshot;
 use crate::provider_catalog::{self, SupportLevel};
 use serde::Serialize;
 
+/// Lightweight info about an in-progress OAuth session, surfaced by the
+/// durable provider state read path so the UI can rehydrate after relaunch.
+#[derive(Debug, Clone)]
+pub struct PendingAuthInfo {
+    pub session_id: String,
+    pub flow: String,
+}
+
 /// The full self-contained setup state for one provider.
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -30,6 +38,12 @@ pub enum ProviderSetupState {
         verification_url: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         expires_at: Option<String>,
+    },
+    /// A persisted OAuth session exists but Hermes has not been consulted yet
+    /// (it is not running). The provider is NOT unconfigured — it is pending
+    /// resume. Once Hermes is reachable, the session must be revalidated.
+    AuthPendingResume {
+        session_id: String,
     },
     /// PKCE flow is waiting for the creator to paste the callback code.
     AwaitingPkceCode {
@@ -150,6 +164,7 @@ pub fn derive_state(
     selected_model: Option<&str>,
     last_validation: Option<&ValidationResult>,
     last_runtime_test: Option<&RuntimeTestResult>,
+    pending_auth: Option<&PendingAuthInfo>,
 ) -> ProviderState {
     let entry = provider_catalog::find(provider_id);
     let can_disconnect = entry
@@ -219,8 +234,8 @@ pub fn derive_state(
     }
 
     // Guided providers: honour the truth hierarchy.
-    let message = compose_message(provider_id, snapshot, selected_model);
-    let setup_state = compose_setup_state(provider_id, snapshot, selected_model, last_runtime_test);
+    let message = compose_message(provider_id, snapshot, selected_model, pending_auth);
+    let setup_state = compose_setup_state(provider_id, snapshot, selected_model, last_runtime_test, pending_auth);
 
     ProviderState {
         provider_id: provider_id.to_string(),
@@ -241,11 +256,33 @@ fn compose_setup_state(
     snapshot: &HermesAuthSnapshot,
     selected_model: Option<&str>,
     last_runtime_test: Option<&RuntimeTestResult>,
+    pending_auth: Option<&PendingAuthInfo>,
 ) -> ProviderSetupState {
     let entry = match provider_catalog::find(provider_id) {
         Some(entry) => entry,
         None => return ProviderSetupState::Unconfigured,
     };
+
+    // Pending OAuth session: the durable read path surfaces it for the wizard
+    // even before Hermes is polled — Hermes remains the source of truth later.
+    if let Some(auth) = pending_auth {
+        if !auth.session_id.is_empty() {
+            if snapshot.hermes_running {
+                return ProviderSetupState::AuthInProgress {
+                    flow: auth.flow.clone(),
+                    session_id: auth.session_id.clone(),
+                    user_code: None,
+                    verification_url: None,
+                    expires_at: None,
+                };
+            }
+            // Hermes not running; the session exists but has not been revalidated.
+            // This is NOT "unconfigured" — the creator was mid-sign-in.
+            return ProviderSetupState::AuthPendingResume {
+                session_id: auth.session_id.clone(),
+            };
+        }
+    }
 
     // Offline: only weak hints, never strong claims.
     if !snapshot.hermes_running {
@@ -289,8 +326,17 @@ fn compose_message(
     provider_id: &str,
     snapshot: &HermesAuthSnapshot,
     selected_model: Option<&str>,
+    pending_auth: Option<&PendingAuthInfo>,
 ) -> String {
     if !snapshot.hermes_running {
+        // A pending OAuth session exists but Hermes is stopped. Not unconfigured.
+        if let Some(auth) = pending_auth {
+            if !auth.session_id.is_empty() {
+                return format!(
+                    "A sign-in was in progress for {provider_id}. Start Hermes to resume or clear this session."
+                );
+            }
+        }
         if snapshot.configured || selected_model.is_some() {
             return format!(
                 "Saved setup detected for {provider_id}, but Hermes is not running. \
@@ -335,7 +381,7 @@ mod tests {
 
     #[test]
     fn offline_never_claims_authenticated() {
-        let state = derive_state("nous", &snapshot(false, true, false), Some("m1"), None, None);
+        let state = derive_state("nous", &snapshot(false, true, false), Some("m1"), None, None, None);
         assert!(!state.verified_by_hermes);
         assert!(!state.authenticated);
         assert!(matches!(state.setup_state, ProviderSetupState::Unconfigured));
@@ -350,6 +396,7 @@ mod tests {
             Some("stepfun/step-3.7-flash:free"),
             None,
             None,
+            None,
         );
         assert!(state.verified_by_hermes);
         assert!(state.authenticated);
@@ -361,7 +408,7 @@ mod tests {
 
     #[test]
     fn online_without_model_is_configured_no_model() {
-        let state = derive_state("nous", &snapshot(true, true, true), None, None, None);
+        let state = derive_state("nous", &snapshot(true, true, true), None, None, None, None);
         assert!(matches!(
             state.setup_state,
             ProviderSetupState::ConfiguredNoModel
@@ -370,7 +417,7 @@ mod tests {
 
     #[test]
     fn recognized_not_guided_shows_honest_state() {
-        let state = derive_state("anthropic", &snapshot(true, true, true), Some("claude-3"), None, None);
+        let state = derive_state("anthropic", &snapshot(true, true, true), Some("claude-3"), None, None, None);
         assert!(matches!(
             state.setup_state,
             ProviderSetupState::RecognizedNotGuided { .. }
@@ -392,6 +439,7 @@ mod tests {
             Some("m"),
             None,
             Some(&test),
+            None,
         );
         assert!(matches!(
             state.setup_state,
@@ -401,7 +449,7 @@ mod tests {
 
     #[test]
     fn unknown_provider_is_unconfigured_and_disconnected() {
-        let state = derive_state("not-a-real-provider", &snapshot(true, true, true), None, None, None);
+        let state = derive_state("not-a-real-provider", &snapshot(true, true, true), None, None, None, None);
         assert!(matches!(state.setup_state, ProviderSetupState::Unconfigured));
         assert!(!state.can_disconnect);
         assert!(!state.verified_by_hermes); // hermes_running true but unknown

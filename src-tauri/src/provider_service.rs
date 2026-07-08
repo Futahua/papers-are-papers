@@ -63,6 +63,9 @@ pub enum ProviderEvent {
     RuntimeTestPassed { provider_id: String, model: String, marker: String, at: String },
     RuntimeTestFailed { provider_id: String, reason: String, at: String },
     ActiveProviderChanged { provider_id: String, model: String },
+    ActivationRefused { provider_id: String, reason: String },
+    ProviderDisconnected { provider_id: String },
+    AuthResumed { provider_id: String },
     RuntimeHealth { health: ProviderRuntimeHealth },
 }
 
@@ -97,72 +100,60 @@ impl ProviderService {
     ) -> Result<ProviderState, String> {
         let snapshot = adapter.snapshot(provider_id).await?;
         let selected = snapshot.selected_model.clone();
-        let state = derive_state(provider_id, &snapshot, selected.as_deref(), None, None);
+        let (last_runtime_test, last_validation) = self
+            .db
+            .last_provider_test(provider_id)
+            .ok()
+            .flatten()
+            .map(|(passed, reason, at)| {
+                let test = RuntimeTestResult {
+                    passed,
+                    marker: TEST_MARKER.to_string(),
+                    reason: reason.clone(),
+                    at: at.clone(),
+                };
+                let validation = if !passed {
+                    reason.map(|r| ValidationResult {
+                        ok: false,
+                        reachable: false,
+                        message: r,
+                        at: at.clone(),
+                    })
+                } else {
+                    None
+                };
+                (Some(test), validation)
+            })
+            .unwrap_or((None, None));
+        let pending_auth = self
+            .db
+            .get_pending_oauth_for_provider(provider_id)
+            .ok()
+            .flatten();
+        let state = derive_state(
+            provider_id,
+            &snapshot,
+            selected.as_deref(),
+            last_validation.as_ref(),
+            last_runtime_test.as_ref(),
+            pending_auth.as_ref().map(|(session_id, flow, _)| {
+                crate::provider_state::PendingAuthInfo {
+                    session_id: session_id.clone(),
+                    flow: flow.clone(),
+                }
+            }).as_ref(),
+        );
         Ok(state)
     }
 
     /// Offline weak hint. Always `verified: false`. Surfaced separately so the
     /// UI distinguishes 'Saved (not verified)' from Hermes-confirmed state.
-    pub fn offline_hint(&self, provider_id: &str) -> Result<OfflineProviderHint, String> {
-        let entry = provider_catalog::find(provider_id)
-            .ok_or_else(|| format!("Papers does not know a provider \"{provider_id}\"."))?;
-        use provider_catalog::AuthMethod;
-        let (credential_hint, source) = match entry.auth_method {
-            AuthMethod::OauthPortal | AuthMethod::External => {
-                // OAuth presence checked via auth.json only as a hint here.
-                let present = std::fs::read(adapter_auth_json_for(&entry.id))
-                    .ok()
-                    .and_then(|bytes| {
-                        serde_json::from_slice::<Value>(&bytes)
-                            .ok()
-                            .and_then(|auth| {
-                                let active = auth
-                                    .get("active_provider")
-                                    .and_then(Value::as_str)
-                                    .unwrap_or("")
-                                    .eq_ignore_ascii_case(&entry.id);
-                                let in_providers = auth
-                                    .get("providers")
-                                    .and_then(Value::as_object)
-                                    .map(|p| p.contains_key(&entry.id))
-                                    .unwrap_or(false);
-                                Some(active || in_providers)
-                            })
-                    })
-                    .unwrap_or(false);
-                (
-                    if present {
-                        CredentialHint::Present
-                    } else {
-                        CredentialHint::None
-                    },
-                    OfflineSource::AuthJson,
-                )
-            }
-            AuthMethod::ApiKey => {
-                let present = entry
-                    .api_key_descriptor()
-                    .map(|desc| env_present_anywhere(&desc.env_var))
-                    .unwrap_or(false);
-                (
-                    if present {
-                        CredentialHint::Present
-                    } else {
-                        CredentialHint::None
-                    },
-                    OfflineSource::Env,
-                )
-            }
-            AuthMethod::Local => (CredentialHint::None, OfflineSource::Config),
-        };
-
-        Ok(OfflineProviderHint {
-            provider_id: provider_id.to_string(),
-            credential_hint,
-            selected_model: None,
-            source,
-            verified: false,
-        })
+    pub fn offline_hint(
+        &self,
+        adapter: &HermesProviderAdapter,
+        provider_id: &str,
+    ) -> Result<OfflineProviderHint, String> {
+        Ok(adapter.offline_hint(provider_id))
     }
 
     /// `begin_provider_auth(provider_id)` — starts an OAuth flow via the
@@ -386,7 +377,7 @@ impl ProviderService {
     /// `disconnect_provider(provider_id)` — clears the OAuth provider or env key.
     pub async fn disconnect(
         &self,
-        _app: &AppHandle,
+        app: &AppHandle,
         adapter: &HermesProviderAdapter,
         provider_id: &str,
     ) -> Result<(), String> {
@@ -408,6 +399,12 @@ impl ProviderService {
             }
         }
         self.db.clear_pending_oauth(provider_id)?;
+        self.emit(
+            app,
+            ProviderEvent::ProviderDisconnected {
+                provider_id: provider_id.to_string(),
+            },
+        );
         Ok(())
     }
 
@@ -427,6 +424,12 @@ impl ProviderService {
             match poll.status {
                 PollStatus::Approved => {
                     self.db.clear_pending_oauth(&record.provider_id)?;
+                    self.emit(
+                        app,
+                        ProviderEvent::AuthResumed {
+                            provider_id: record.provider_id.clone(),
+                        },
+                    );
                     events.push(ProviderEvent::AuthApproved {
                         provider_id: record.provider_id,
                     });
@@ -516,11 +519,18 @@ impl ProviderService {
         if !force {
             let passed = last_test.map(|t| t.passed).unwrap_or(false);
             if !passed {
-                return Err(
+                let reason: String =
                     "Activate the provider after it passes a live runtime test, \
                      or force the switch explicitly."
-                        .into(),
+                        .to_string();
+                self.emit(
+                    app,
+                    ProviderEvent::ActivationRefused {
+                        provider_id: provider_id.to_string(),
+                        reason: reason.clone(),
+                    },
                 );
+                return Err(reason);
             }
         }
         // Setting the model also commits it as the active config in Hermes.
