@@ -292,7 +292,7 @@ impl RuntimeManager {
         command
             .args(["serve", "--host", "127.0.0.1", "--port"])
             .arg(port.to_string())
-            .current_dir(&self.paths.canonical_repo)
+            .current_dir(&self.paths.runtime)
             .env("HERMES_HOME", &self.paths.hermes_home)
             .env("HERMES_EXEC_ASK", "1")
             .env("HERMES_DASHBOARD_SESSION_TOKEN", &session_token)
