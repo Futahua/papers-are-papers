@@ -77,6 +77,7 @@ export type ProviderSetupState =
       verification_url?: string;
       expires_at?: string;
     }
+  | { kind: "auth_pending_resume"; session_id: string }
   | {
       kind: "awaiting_pkce_code";
       session_id: string;

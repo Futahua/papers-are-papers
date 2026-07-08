@@ -63,6 +63,9 @@ pub enum ProviderEvent {
     RuntimeTestPassed { provider_id: String, model: String, marker: String, at: String },
     RuntimeTestFailed { provider_id: String, reason: String, at: String },
     ActiveProviderChanged { provider_id: String, model: String },
+    ActivationRefused { provider_id: String, reason: String },
+    ProviderDisconnected { provider_id: String },
+    AuthResumed { provider_id: String },
     RuntimeHealth { health: ProviderRuntimeHealth },
 }
 
@@ -97,72 +100,60 @@ impl ProviderService {
     ) -> Result<ProviderState, String> {
         let snapshot = adapter.snapshot(provider_id).await?;
         let selected = snapshot.selected_model.clone();
-        let state = derive_state(provider_id, &snapshot, selected.as_deref(), None, None);
+        let (last_runtime_test, last_validation) = self
+            .db
+            .last_provider_test(provider_id)
+            .ok()
+            .flatten()
+            .map(|(passed, reason, at)| {
+                let test = RuntimeTestResult {
+                    passed,
+                    marker: TEST_MARKER.to_string(),
+                    reason: reason.clone(),
+                    at: at.clone(),
+                };
+                let validation = if !passed {
+                    reason.map(|r| ValidationResult {
+                        ok: false,
+                        reachable: false,
+                        message: r,
+                        at: at.clone(),
+                    })
+                } else {
+                    None
+                };
+                (Some(test), validation)
+            })
+            .unwrap_or((None, None));
+        let pending_auth = self
+            .db
+            .get_pending_oauth_for_provider(provider_id)
+            .ok()
+            .flatten();
+        let state = derive_state(
+            provider_id,
+            &snapshot,
+            selected.as_deref(),
+            last_validation.as_ref(),
+            last_runtime_test.as_ref(),
+            pending_auth.as_ref().map(|(session_id, flow, _)| {
+                crate::provider_state::PendingAuthInfo {
+                    session_id: session_id.clone(),
+                    flow: flow.clone(),
+                }
+            }).as_ref(),
+        );
         Ok(state)
     }
 
     /// Offline weak hint. Always `verified: false`. Surfaced separately so the
     /// UI distinguishes 'Saved (not verified)' from Hermes-confirmed state.
-    pub fn offline_hint(&self, provider_id: &str) -> Result<OfflineProviderHint, String> {
-        let entry = provider_catalog::find(provider_id)
-            .ok_or_else(|| format!("Papers does not know a provider \"{provider_id}\"."))?;
-        use provider_catalog::AuthMethod;
-        let (credential_hint, source) = match entry.auth_method {
-            AuthMethod::OauthPortal | AuthMethod::External => {
-                // OAuth presence checked via auth.json only as a hint here.
-                let present = std::fs::read(adapter_auth_json_for(&entry.id))
-                    .ok()
-                    .and_then(|bytes| {
-                        serde_json::from_slice::<Value>(&bytes)
-                            .ok()
-                            .and_then(|auth| {
-                                let active = auth
-                                    .get("active_provider")
-                                    .and_then(Value::as_str)
-                                    .unwrap_or("")
-                                    .eq_ignore_ascii_case(&entry.id);
-                                let in_providers = auth
-                                    .get("providers")
-                                    .and_then(Value::as_object)
-                                    .map(|p| p.contains_key(&entry.id))
-                                    .unwrap_or(false);
-                                Some(active || in_providers)
-                            })
-                    })
-                    .unwrap_or(false);
-                (
-                    if present {
-                        CredentialHint::Present
-                    } else {
-                        CredentialHint::None
-                    },
-                    OfflineSource::AuthJson,
-                )
-            }
-            AuthMethod::ApiKey => {
-                let present = entry
-                    .api_key_descriptor()
-                    .map(|desc| env_present_anywhere(&desc.env_var))
-                    .unwrap_or(false);
-                (
-                    if present {
-                        CredentialHint::Present
-                    } else {
-                        CredentialHint::None
-                    },
-                    OfflineSource::Env,
-                )
-            }
-            AuthMethod::Local => (CredentialHint::None, OfflineSource::Config),
-        };
-
-        Ok(OfflineProviderHint {
-            provider_id: provider_id.to_string(),
-            credential_hint,
-            selected_model: None,
-            source,
-            verified: false,
-        })
+    pub fn offline_hint(
+        &self,
+        adapter: &HermesProviderAdapter,
+        provider_id: &str,
+    ) -> Result<OfflineProviderHint, String> {
+        Ok(adapter.offline_hint(provider_id))
     }
 
     /// `begin_provider_auth(provider_id)` — starts an OAuth flow via the
@@ -331,28 +322,31 @@ impl ProviderService {
         Ok(result)
     }
 
-    /// `list_provider_models(provider_id)` — real model list from Hermes when
-    /// authenticated. Falls back to the catalog hint when offline.
+    /// `list_provider_models(provider_id)` — real model list from Hermes. Calls
+    /// the adapter's dedicated `list_models()` endpoint (not the snapshot). Falls
+    /// back to a multi-model curated hint only on failure; never shows a
+    /// single placeholder model for guided providers.
     pub async fn list_models(
         &self,
         adapter: &HermesProviderAdapter,
         provider_id: &str,
     ) -> Result<Vec<String>, String> {
-        let snapshot = adapter.snapshot(provider_id).await?;
-        if !snapshot.available_models.is_empty() {
-            return Ok(snapshot.available_models);
+        match adapter.list_models(provider_id).await {
+            Ok(models) if !models.is_empty() => {
+                eprintln!("[provider_service] list_models({provider_id}): Hermes returned {} models", models.len());
+                Ok(models)
+            }
+            Ok(_) => {
+                let fallback = curated_fallback(provider_id);
+                eprintln!("[provider_service] list_models({provider_id}): Hermes returned empty, using fallback ({} models)", fallback.len());
+                Ok(fallback)
+            }
+            Err(e) => {
+                let fallback = curated_fallback(provider_id);
+                eprintln!("[provider_service] list_models({provider_id}): Hermes error '{}', using fallback ({} models)", e, fallback.len());
+                Ok(fallback)
+            }
         }
-        // Offline / not-yet-authenticated fallback: the tutor free model for
-        // Nous, empty otherwise. Honest — the UI labids these as suggestions.
-        let entry = provider_catalog::find(provider_id);
-        let fallback = match provider_id {
-            "nous" => vec!["stepfun/step-3.7-flash:free".to_string()],
-            "openai-codex" => vec!["o4-mini".to_string()],
-            "openrouter" => vec!["openrouter/auto".to_string()],
-            _ => Vec::new(),
-        };
-        let _ = entry;
-        Ok(fallback)
     }
 
     /// `set_provider_model(provider_id, model)` — writes Hermes config but does
@@ -372,6 +366,10 @@ impl ProviderService {
         if model.len() > 220 || model.contains('\n') || model.contains('\r') {
             return Err("Model names must be a single short line.".into());
         }
+        // Model changed: the old runtime test is no longer valid for the new
+        // model. Clear it BEFORE the adapter call so it's always cleared
+        // regardless of whether Hermes accepts the model assignment.
+        let _ = self.db.clear_provider_test(provider_id);
         adapter.set_model(provider_id, model).await?;
         let event = ProviderEvent::ModelSelected {
             provider_id: provider_id.to_string(),
@@ -386,7 +384,7 @@ impl ProviderService {
     /// `disconnect_provider(provider_id)` — clears the OAuth provider or env key.
     pub async fn disconnect(
         &self,
-        _app: &AppHandle,
+        app: &AppHandle,
         adapter: &HermesProviderAdapter,
         provider_id: &str,
     ) -> Result<(), String> {
@@ -408,6 +406,12 @@ impl ProviderService {
             }
         }
         self.db.clear_pending_oauth(provider_id)?;
+        self.emit(
+            app,
+            ProviderEvent::ProviderDisconnected {
+                provider_id: provider_id.to_string(),
+            },
+        );
         Ok(())
     }
 
@@ -427,6 +431,12 @@ impl ProviderService {
             match poll.status {
                 PollStatus::Approved => {
                     self.db.clear_pending_oauth(&record.provider_id)?;
+                    self.emit(
+                        app,
+                        ProviderEvent::AuthResumed {
+                            provider_id: record.provider_id.clone(),
+                        },
+                    );
                     events.push(ProviderEvent::AuthApproved {
                         provider_id: record.provider_id,
                     });
@@ -516,11 +526,18 @@ impl ProviderService {
         if !force {
             let passed = last_test.map(|t| t.passed).unwrap_or(false);
             if !passed {
-                return Err(
+                let reason: String =
                     "Activate the provider after it passes a live runtime test, \
                      or force the switch explicitly."
-                        .into(),
+                        .to_string();
+                self.emit(
+                    app,
+                    ProviderEvent::ActivationRefused {
+                        provider_id: provider_id.to_string(),
+                        reason: reason.clone(),
+                    },
                 );
+                return Err(reason);
             }
         }
         // Setting the model also commits it as the active config in Hermes.
@@ -550,39 +567,6 @@ fn validate_secret_shape(secret: &str) -> Result<(), String> {
 }
 
 /// Where Hermes' `auth.json` would live for a give provider id hint. Only used
-/// for offline credential-presence detection and never reads token contents.
-fn adapter_auth_json_for(_provider_id: &str) -> std::path::PathBuf {
-    // Hermes_home + auth.json. The caller doesn't have paths here but this
-    // helper is only used for the credential_hint computation; the service
-    // construct recomputes presence from the real path when it has one. We
-    // keep best-effort resolution via the env-set PAPERS_DATA_HOME.
-    let root = std::env::var_os("PAPERS_DATA_HOME")
-        .map(std::path::PathBuf::from)
-        .or_else(|| dirs::data_local_dir().map(|p| p.join("Papers")))
-        .unwrap_or_else(|| std::path::PathBuf::from("."));
-    root.join("data").join("hermes").join("auth.json")
-}
-
-/// Best-effort `.env` presence check at the Hermes_home location. Never claims
-/// validity; only presence/non-empty value.
-fn env_present_anywhere(env_var: &str) -> bool {
-    let root = std::env::var_os("PAPERS_DATA_HOME")
-        .map(std::path::PathBuf::from)
-        .or_else(|| dirs::data_local_dir().map(|p| p.join("Papers")))
-        .unwrap_or_else(|| std::path::PathBuf::from("."));
-    let path = root.join("data").join("hermes").join(".env");
-    let Ok(bytes) = std::fs::read_to_string(&path) else {
-        return false;
-    };
-    let needle = format!("{env_var}=");
-    bytes.lines().any(|line| {
-        let trimmed = line.trim_start();
-        trimmed.starts_with(&needle)
-            && trimmed[needle.len()..].trim() != ""
-            && !trimmed.starts_with(&format!("{env_var}=#"))
-    })
-}
-
 // Small extension trait so the runtime-test result can carry provider/model
 // context without leaking into the public `RuntimeTestResult` shape.
 trait PipeFor {
@@ -595,5 +579,33 @@ impl PipeFor for RuntimeTestResult {
         // context is attached by the caller via the event. No-op kept so the
         // call site reads as a fluent step rather than a bare constructor.
         self
+    }
+}
+/// Multi-model fallback curated from Hermes' model catalog. Only used when
+/// Hermes is unreachable or the model-list endpoint fails. Guided providers
+/// get a real multi-model list, never a single placeholder.
+fn curated_fallback(provider_id: &str) -> Vec<String> {
+    match provider_id {
+        "nous" => vec![
+            "anthropic/claude-fable-5".into(),
+            "anthropic/claude-opus-4.8".into(),
+            "anthropic/claude-sonnet-5".into(),
+            "anthropic/claude-haiku-4.5".into(),
+            "openai/gpt-5.5".into(),
+            "openai/gpt-5.5-pro".into(),
+            "google/gemini-3.5-flash".into(),
+            "deepseek/deepseek-v4-pro".into(),
+            "qwen/qwen3.7-max".into(),
+            "moonshotai/kimi-k2.6".into(),
+            "minimax/minimax-m3".into(),
+            "stepfun/step-3.7-flash".into(),
+        ],
+        "openai-codex" => vec!["o4-mini".into(), "gpt-4.1".into()],
+        "openrouter" => vec![
+            "openrouter/auto".into(),
+            "anthropic/claude-opus-4.8".into(),
+            "openai/gpt-5.5".into(),
+        ],
+        _ => Vec::new(),
     }
 }

@@ -39,6 +39,8 @@ const setupStateHeadline = (state: ProviderSetupState): string => {
       return "Not set up yet";
     case "auth_in_progress":
       return "Waiting for browser sign-in";
+    case "auth_pending_resume":
+      return "Previous sign-in pending resume";
     case "awaiting_pkce_code":
       return "Paste the callback code";
     case "configured_no_model":
@@ -79,11 +81,25 @@ export function SettingsWizard({
   const [pkceCode, setPkceCode] = useState("");
   const [onlineHint, setOnlineHint] = useState("");
   const [testing, setTesting] = useState(false);
+  const [modelMenuOpen, setModelMenuOpen] = useState(false);
+  const [modelQuery, setModelQuery] = useState("");
   const pollRef = useRef<(() => void) | null>(null);
 
   const entry = useMemo(
     () => catalog.find((item) => item.id === providerId) ?? null,
     [catalog, providerId],
+  );
+
+  const filteredModels = useMemo(() => {
+    const q = modelQuery.trim().toLowerCase();
+    if (!q) return models;
+    return models.filter((m) => m.toLowerCase().includes(q));
+  }, [models, modelQuery]);
+
+  const selectedNotInList = !!(
+    state?.selected_model &&
+    models.length > 0 &&
+    !models.includes(state.selected_model)
   );
 
   const refresh = useCallback(async () => {
@@ -343,8 +359,13 @@ export function SettingsWizard({
   const renderKeyEntry = entry?.auth_method === "api_key";
   const isPkce = state?.setup_state.kind === "awaiting_pkce_code";
   const canActivate =
-    state?.setup_state.kind === "runtime_test_passed" ||
-    state?.setup_state.kind === "runtime_test_failed";
+    state?.setup_state.kind === "runtime_test_passed";
+
+  // Recovery actions for a failed runtime test.
+  const isFailedTest = state?.setup_state.kind === "runtime_test_failed";
+  // Configured + model + never tested → show Run test only.
+  const isUntestedConfigured =
+    state?.setup_state.kind === "configured_model_selected";
 
   return (
     <section className="settings-panel" role="dialog" aria-modal="true">
@@ -511,6 +532,13 @@ export function SettingsWizard({
             </form>
           )}
 
+          {state && state.setup_state.kind === "auth_pending_resume" && (
+            <div className="test-ok">
+              <RefreshCw size={14} /> A sign-in was in progress. Start Hermes to
+              resume or clear this session.
+            </div>
+          )}
+
           {(state.setup_state.kind === "configured_no_model" ||
             state.setup_state.kind === "configured_model_selected" ||
             state.setup_state.kind === "runtime_test_passed" ||
@@ -518,18 +546,56 @@ export function SettingsWizard({
             <div className="model-section">
               <label className="model-input">
                 <span>Model</span>
-                <input
-                  list="papers-model-suggestions"
-                  value={modelDraft}
-                  onChange={(event) => setModelDraft(event.target.value)}
-                  placeholder="provider/model or model id"
-                />
-                <datalist id="papers-model-suggestions">
-                  {models.map((model) => (
-                    <option value={model} key={model} />
-                  ))}
-                </datalist>
+                <div className="model-picker">
+                  <div className="model-picker-trigger">
+                    <input
+                      value={modelDraft}
+                      onFocus={() => {
+                        setModelQuery("");
+                        setModelMenuOpen(true);
+                      }}
+                      onChange={(event) => {
+                        setModelDraft(event.target.value);
+                        setModelQuery(event.target.value);
+                        setModelMenuOpen(true);
+                      }}
+                      onBlur={() => window.setTimeout(() => setModelMenuOpen(false), 150)}
+                      placeholder="provider/model or model id"
+                    />
+                    <button
+                      type="button"
+                      className="picker-toggle"
+                      onClick={() => setModelMenuOpen((v) => !v)}
+                    >
+                      <ChevronDown size={14} />
+                    </button>
+                  </div>
+                  {modelMenuOpen && filteredModels.length > 0 && (
+                    <div className="model-picker-menu">
+                      {filteredModels.map((model) => (
+                        <button
+                          type="button"
+                          key={model}
+                          className={model === modelDraft ? "selected" : ""}
+                          onMouseDown={(event) => {
+                            event.preventDefault();
+                            setModelDraft(model);
+                            setModelQuery(model);
+                            setModelMenuOpen(false);
+                          }}
+                        >
+                          {model}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </label>
+              {selectedNotInList && (
+                <small className="settings-footnote warn">
+                  Current saved model "{state?.selected_model ?? ""}" isn't in the fetched provider catalog.
+                </small>
+              )}
               <button
                 className="secondary"
                 onClick={() => void saveModel()}
@@ -563,13 +629,26 @@ export function SettingsWizard({
             </p>
           )}
 
+          {isFailedTest && state && state.setup_state.kind === "runtime_test_failed" && (
+            <div className="inline-error">
+              Test failed: {state.setup_state.reason}. Try a different model or
+              re-enter the key.
+            </div>
+          )}
+
+          {isFailedTest && (
+            <button className="primary" onClick={() => void activate()} disabled={busy}>
+              Force activate {providerId} (unsafe)
+            </button>
+          )}
+
           {canActivate && (
             <button
               className="primary"
               onClick={() => void activate()}
               disabled={busy}
             >
-              Activate {providerId}
+              <Check size={14} /> Activate {providerId}
             </button>
           )}
 

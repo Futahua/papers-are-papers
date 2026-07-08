@@ -315,6 +315,7 @@ impl RuntimeManager {
             .current_dir(&self.paths.runtime)
             .env("HERMES_HOME", &self.paths.hermes_home)
             .env("HERMES_EXEC_ASK", "1")
+            .env("HERMES_DASHBOARD_TUI", "1")
             .env("HERMES_DASHBOARD_SESSION_TOKEN", &session_token)
             .env(
                 "PLAYWRIGHT_BROWSERS_PATH",
