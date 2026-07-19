@@ -29,13 +29,37 @@ impl Default for GatewayProxy {
 impl GatewayProxy {
     pub async fn connect(&self, app: AppHandle, url: String) -> Result<(), String> {
         self.disconnect()?;
-        let (socket, _) = tokio::time::timeout(
-            Duration::from_secs(15),
-            tokio_tungstenite::connect_async(&url),
-        )
-        .await
-        .map_err(|_| "Hermes did not open its control channel in time".to_string())?
-        .map_err(|error| format!("Could not connect to Hermes: {error}"))?;
+        // Hermes' JSON-RPC WebSocket sidecar (enabled by HERMES_DASHBOARD_TUI=1)
+        // can lag its HTTP health endpoint by a fraction of a second during
+        // startup. `runtime::start` only probes the HTTP `/api/status` route,
+        // so the WS connect here may race the sidecar and get a TCP
+        // connection-refused. Retry that class of failure for a few seconds
+        // before surfacing the error to React.
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        let (socket, _) = loop {
+            match tokio::time::timeout(
+                Duration::from_secs(15),
+                tokio_tungstenite::connect_async(&url),
+            )
+            .await
+            {
+                Ok(Ok(pair)) => break pair,
+                Ok(Err(error)) => {
+                    let retryable = matches!(
+                        &error,
+                        tokio_tungstenite::tungstenite::Error::Io(io_err)
+                            if io_err.kind() == std::io::ErrorKind::ConnectionRefused
+                    );
+                    if !retryable || std::time::Instant::now() >= deadline {
+                        return Err(format!("Could not connect to Hermes: {error}"));
+                    }
+                    tokio::time::sleep(Duration::from_millis(250)).await;
+                }
+                Err(_) => {
+                    return Err("Hermes did not open its control channel in time".to_string());
+                }
+            }
+        };
         let (mut writer, mut reader) = socket.split();
         let (sender, mut receiver) = mpsc::unbounded_channel::<Message>();
         let task = tokio::spawn(async move {
